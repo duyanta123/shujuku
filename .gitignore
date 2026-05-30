@@ -1,0 +1,67 @@
+# Java/IDEA
+*.class
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+*.iml
+.idea/
+*.iws
+*.ipr
+target/
+*.log
+*.classpath
+*.project
+.settings/
+bin/
+out/
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+dist/
+.vite/
+.cache/
+
+# Mac
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# VS Code
+.vscode/
+*.swp
+*.swo
+*~
+
+# Database
+*.sql
+!database/init_database.sql
+!database/queries.sql
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+server.log
