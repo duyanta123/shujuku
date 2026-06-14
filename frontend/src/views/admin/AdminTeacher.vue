@@ -9,7 +9,8 @@
       <el-table :data="teacherList" stripe>
         <el-table-column prop="teacherNo" label="工号" width="150" />
         <el-table-column prop="name" label="姓名" width="120" />
-        <el-table-column prop="title" label="职称" width="150" />
+        <el-table-column prop="title" label="职称" width="120" />
+        <el-table-column prop="college" label="学院" min-width="180" />
         <el-table-column label="操作" width="260" align="center">
           <template #default="scope">
             <el-button type="primary" size="small" text @click="handleEdit(scope.row)">编辑</el-button>
@@ -35,6 +36,11 @@
             <el-option label="副教授" value="副教授" />
             <el-option label="讲师" value="讲师" />
             <el-option label="助教" value="助教" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="学院" prop="college">
+          <el-select v-model="teacherForm.college" style="width:100%" placeholder="请选择学院">
+            <el-option v-for="c in collegeOptions" :key="c" :label="c" :value="c" />
           </el-select>
         </el-form-item>
         <el-form-item label="密码" prop="password">
@@ -85,11 +91,24 @@ import {
   getPasswordValidationError
 } from '../../utils/passwordValidator'
 
+const collegeOptions = [
+  '数学与计算机科学学院',
+  '物理与电子工程学院',
+  '化学与材料科学学院',
+  '生命科学学院',
+  '地理与环境科学学院',
+  '信息工程学院',
+  '经济与管理学院',
+  '外国语学院',
+  '马克思主义学院',
+  '教育学院'
+]
+
 const teacherList = ref([])
 const dialogVisible = ref(false)
 const dialogTitle = ref('添加教师')
 const teacherFormRef = ref(null)
-const teacherForm = ref({ id: null, teacherNo: '', name: '', title: '', password: '' })
+const teacherForm = ref({ id: null, teacherNo: '', name: '', title: '', college: '', password: '' })
 
 const teacherRules = {
   teacherNo: [
@@ -101,6 +120,9 @@ const teacherRules = {
   ],
   title: [
     { required: true, message: '请选择职称', trigger: 'change' }
+  ],
+  college: [
+    { required: true, message: '请选择学院', trigger: 'change' }
   ],
   password: [
     {
@@ -144,7 +166,7 @@ const loadTeachers = async () => {
 
 const handleAdd = () => {
   dialogTitle.value = '添加教师'
-  teacherForm.value = { id: null, teacherNo: '', name: '', title: '', password: '' }
+  teacherForm.value = { id: null, teacherNo: '', name: '', title: '', college: '', password: '' }
   teacherFormRef.value?.resetFields()
   dialogVisible.value = true
 }

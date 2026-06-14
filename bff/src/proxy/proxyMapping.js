@@ -23,6 +23,7 @@ const authenticatedPaths = [
   '/api/teacher/',
   '/api/admin/',
   '/api/score/',
+  '/api/course/',
   '/api/lab/',
 ]
 

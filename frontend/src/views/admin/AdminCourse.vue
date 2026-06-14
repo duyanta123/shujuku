@@ -7,7 +7,8 @@
 
     <div class="table-responsive">
       <el-table :data="courseList" stripe>
-        <el-table-column prop="courseName" label="课程名" min-width="180" />
+        <el-table-column prop="courseName" label="课程名" min-width="150" />
+        <el-table-column prop="college" label="学院" min-width="150" />
         <el-table-column prop="courseTime" label="上课时间" width="150" />
         <el-table-column prop="maxCount" label="容量" width="100" />
         <el-table-column label="操作" width="180" align="center">
@@ -37,6 +38,9 @@
         <el-form-item label="上课时间" prop="courseTime">
           <el-input v-model="courseForm.courseTime" placeholder="如：周一 1-2节" />
         </el-form-item>
+        <el-form-item label="学院" prop="college">
+          <el-input v-model="courseForm.college" placeholder="请输入学院" />
+        </el-form-item>
         <el-form-item label="最大人数" prop="maxCount">
           <el-input-number v-model="courseForm.maxCount" />
         </el-form-item>
@@ -62,7 +66,7 @@ const labList = ref([])
 const dialogVisible = ref(false)
 const dialogTitle = ref('添加课程')
 const courseFormRef = ref(null)
-const courseForm = ref({ id: null, courseName: '', teacherId: null, labId: null, courseTime: '', maxCount: 30 })
+const courseForm = ref({ id: null, courseName: '', teacherId: null, labId: null, courseTime: '', college: '', maxCount: 30 })
 
 const courseRules = {
   courseName: [
@@ -114,7 +118,7 @@ const loadLabs = async () => {
 
 const handleAdd = () => {
   dialogTitle.value = '添加课程'
-  courseForm.value = { id: null, courseName: '', teacherId: null, labId: null, courseTime: '', maxCount: 30 }
+  courseForm.value = { id: null, courseName: '', teacherId: null, labId: null, courseTime: '', college: '', maxCount: 30 }
   courseFormRef.value?.resetFields()
   dialogVisible.value = true
 }

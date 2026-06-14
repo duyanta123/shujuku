@@ -130,6 +130,10 @@
                     <span class="info-value">{{ course.teacher_name }}</span>
                   </div>
                   <div class="info-row">
+                    <span class="info-label">学院</span>
+                    <span class="info-value">{{ course.college || '-' }}</span>
+                  </div>
+                  <div class="info-row">
                     <span class="info-label">地点</span>
                     <span class="info-value">{{ course.location }}</span>
                   </div>
@@ -158,6 +162,10 @@
           <div class="detail-item">
             <span class="detail-label">授课教师</span>
             <span class="detail-value">{{ detailCourse.teacher_name }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">所属学院</span>
+            <span class="detail-value">{{ detailCourse.college || '-' }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">上课时间</span>

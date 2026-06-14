@@ -2,6 +2,7 @@ package com.labcourse.controller;
 
 import com.labcourse.entity.Lab;
 import com.labcourse.service.LabService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -25,7 +26,7 @@ public class LabController {
     }
 
     @PostMapping("/add")
-    public ResponseEntity<Map<String, Object>> add(@RequestBody Lab lab) {
+    public ResponseEntity<Map<String, Object>> add(@Valid @RequestBody Lab lab) {
         Map<String, Object> result = new HashMap<>();
         boolean success = labService.save(lab);
         result.put("success", success);
@@ -34,7 +35,7 @@ public class LabController {
     }
 
     @PutMapping("/update")
-    public ResponseEntity<Map<String, Object>> update(@RequestBody Lab lab) {
+    public ResponseEntity<Map<String, Object>> update(@Valid @RequestBody Lab lab) {
         Map<String, Object> result = new HashMap<>();
         boolean success = labService.updateById(lab);
         result.put("success", success);

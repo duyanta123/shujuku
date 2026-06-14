@@ -141,10 +141,10 @@ const handleLogin = async () => {
 
     if (result.success) {
       const BFF_ENABLED = import.meta.env.VITE_BFF_ENABLED !== 'false'
-      // Security fix (HIGH-003): BFF模式下不存储身份信息到localStorage
-      // Token由HttpOnly Cookie管理，身份信息通过API获取
+      // Security fix (HIGH-003): BFF模式下不存储敏感身份信息到localStorage
+      // Token由HttpOnly Cookie管理，仅存储必要的 id 用于API调用
       const userData = BFF_ENABLED
-        ? { _bffMode: true, token: 'bff-cookie' }
+        ? { _bffMode: true, token: 'bff-cookie', id: result.data?.id }
         : {
             ...result.data,
             role: loginForm.role,

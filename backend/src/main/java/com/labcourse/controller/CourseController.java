@@ -2,6 +2,7 @@ package com.labcourse.controller;
 
 import com.labcourse.entity.Course;
 import com.labcourse.service.CourseService;
+import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,7 +40,7 @@ public class CourseController {
     }
 
     @PostMapping("/add")
-    public ResponseEntity<Map<String, Object>> add(@RequestBody Course course) {
+    public ResponseEntity<Map<String, Object>> add(@Valid @RequestBody Course course) {
         Map<String, Object> result = new HashMap<>();
         boolean success = courseService.save(course);
         result.put("success", success);
@@ -48,7 +49,7 @@ public class CourseController {
     }
 
     @PutMapping("/update")
-    public ResponseEntity<Map<String, Object>> update(@RequestBody Course course) {
+    public ResponseEntity<Map<String, Object>> update(@Valid @RequestBody Course course) {
         Map<String, Object> result = new HashMap<>();
         boolean success = courseService.updateById(course);
         result.put("success", success);

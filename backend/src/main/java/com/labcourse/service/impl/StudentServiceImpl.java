@@ -78,6 +78,9 @@ public class StudentServiceImpl implements StudentService {
             if (student.getMajor() != null) {
                 existing.setMajor(student.getMajor());
             }
+            if (student.getCollege() != null) {
+                existing.setCollege(student.getCollege());
+            }
             if (student.getPassword() != null && !student.getPassword().isEmpty()) {
                 existing.setPassword(passwordEncoder.encode(student.getPassword()));
             }

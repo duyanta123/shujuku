@@ -10,7 +10,8 @@
         <el-table-column prop="studentNo" label="学号" width="150" />
         <el-table-column prop="name" label="姓名" width="120" />
         <el-table-column prop="gender" label="性别" width="80" />
-        <el-table-column prop="major" label="专业" min-width="200" />
+        <el-table-column prop="major" label="专业" min-width="180" />
+        <el-table-column prop="college" label="学院" min-width="180" />
         <el-table-column label="操作" width="260" align="center">
           <template #default="scope">
             <el-button type="primary" size="small" text @click="handleEdit(scope.row)">编辑</el-button>
@@ -38,6 +39,11 @@
         </el-form-item>
         <el-form-item label="专业" prop="major">
           <el-input v-model="studentForm.major" placeholder="请输入专业" />
+        </el-form-item>
+        <el-form-item label="学院" prop="college">
+          <el-select v-model="studentForm.college" style="width:100%" placeholder="请选择学院">
+            <el-option v-for="c in collegeOptions" :key="c" :label="c" :value="c" />
+          </el-select>
         </el-form-item>
         <el-form-item label="密码" prop="password">
           <el-input v-model="studentForm.password" type="password" placeholder="留空则不修改密码" show-password />
@@ -87,11 +93,24 @@ import {
   getPasswordValidationError
 } from '../../utils/passwordValidator'
 
+const collegeOptions = [
+  '数学与计算机科学学院',
+  '物理与电子工程学院',
+  '化学与材料科学学院',
+  '生命科学学院',
+  '地理与环境科学学院',
+  '信息工程学院',
+  '经济与管理学院',
+  '外国语学院',
+  '马克思主义学院',
+  '教育学院'
+]
+
 const studentList = ref([])
 const dialogVisible = ref(false)
 const dialogTitle = ref('添加学生')
 const studentFormRef = ref(null)
-const studentForm = ref({ id: null, studentNo: '', name: '', gender: '', major: '', password: '' })
+const studentForm = ref({ id: null, studentNo: '', name: '', gender: '', major: '', college: '', password: '' })
 
 const studentRules = {
   studentNo: [
@@ -106,6 +125,9 @@ const studentRules = {
   ],
   major: [
     { required: true, message: '请输入专业', trigger: 'blur' }
+  ],
+  college: [
+    { required: true, message: '请选择学院', trigger: 'change' }
   ],
   password: [
     {
@@ -149,7 +171,7 @@ const loadStudents = async () => {
 
 const handleAdd = () => {
   dialogTitle.value = '添加学生'
-  studentForm.value = { id: null, studentNo: '', name: '', gender: '', major: '', password: '' }
+  studentForm.value = { id: null, studentNo: '', name: '', gender: '', major: '', college: '', password: '' }
   studentFormRef.value?.resetFields()
   dialogVisible.value = true
 }

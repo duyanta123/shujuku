@@ -62,6 +62,7 @@ export async function transparentProxyPlugin(app) {
       // 移除仅 BFF 内部使用的头
       delete forwardHeaders.host
       delete forwardHeaders.connection
+      delete forwardHeaders['content-length']  // 由 fetch 自动计算，避免与重序列化 body 不匹配
 
       const proxyStart = Date.now()
 

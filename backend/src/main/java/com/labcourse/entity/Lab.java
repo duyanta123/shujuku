@@ -1,6 +1,7 @@
 package com.labcourse.entity;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Size;
 import java.time.LocalDateTime;
 
 @Entity
@@ -18,6 +19,10 @@ public class Lab {
     
     @Column(name = "capacity")
     private Integer capacity;
+    
+    @Size(max = 100)
+    @Column(name = "college", length = 100)
+    private String college;
     
     @Column(name = "created_at")
     private LocalDateTime createdAt;
@@ -38,6 +43,9 @@ public class Lab {
 
     public Integer getCapacity() { return capacity; }
     public void setCapacity(Integer capacity) { this.capacity = capacity; }
+
+    public String getCollege() { return college; }
+    public void setCollege(String college) { this.college = college; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

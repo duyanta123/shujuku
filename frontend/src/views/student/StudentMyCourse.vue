@@ -22,6 +22,10 @@
             <span class="info-value">{{ course.teacher_name }}</span>
           </div>
           <div class="info-row">
+            <span class="info-label">学院</span>
+            <span class="info-value">{{ course.college || '-' }}</span>
+          </div>
+          <div class="info-row">
             <span class="info-label">实验室</span>
             <span class="info-value">{{ course.lab_name }}</span>
           </div>

@@ -4,6 +4,7 @@ import com.labcourse.entity.Student;
 import com.labcourse.repository.StudentRepository;
 import com.labcourse.service.StudentService;
 import com.labcourse.util.JwtUtil;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -60,7 +61,7 @@ public class StudentController {
     }
 
     @PostMapping("/add")
-    public ResponseEntity<Map<String, Object>> add(@RequestBody Student student) {
+    public ResponseEntity<Map<String, Object>> add(@Valid @RequestBody Student student) {
         Map<String, Object> result = new HashMap<>();
         boolean success = studentService.save(student);
         result.put("success", success);
@@ -69,7 +70,7 @@ public class StudentController {
     }
 
     @PutMapping("/update")
-    public ResponseEntity<Map<String, Object>> update(@RequestBody Student student) {
+    public ResponseEntity<Map<String, Object>> update(@Valid @RequestBody Student student) {
         Map<String, Object> result = new HashMap<>();
         boolean success = studentService.updateById(student);
         result.put("success", success);

@@ -14,7 +14,7 @@ const log = createLogger('JWT')
 export async function jwtVerify(request, reply) {
   const requestId = request.id
 
-  // 1. 从 Cookie 获取 Token（优先双Token accessToken，兼容旧版 cookieName）
+  // 1. 从 Cookie 获取 Token（优先读取 accessTokenCookieName，兼容旧版 cookieName）
   let token = request.cookies?.[config.jwt.accessTokenCookieName]
     || request.cookies?.[config.jwt.cookieName]
   const tokenSource = token ? 'Cookie' : null
@@ -52,8 +52,9 @@ export async function jwtVerify(request, reply) {
   }
 
   try {
+    // 接受 HS256/HS384/HS512，与后端 Keys.hmacShaKeyFor() 的自动算法选择一致
     const decoded = jwt.verify(token, config.jwt.secret, {
-      algorithms: ['HS256'],
+      algorithms: ['HS256', 'HS384', 'HS512'],
     })
 
     // 注入用户信息

@@ -1,0 +1,21 @@
+# Checklist
+
+- [x] AdminStudent.vue 中 `el-input`（college）已替换为 `el-select` + `el-option`
+- [x] AdminStudent.vue 的 `studentRules` 包含 `college: [{ required: true, message: '请选择学院', trigger: 'change' }]`
+- [x] AdminStudent.vue 的 `<script setup>` 中定义了 `collegeOptions` 常量数组，包含 10 个预设学院
+- [x] AdminTeacher.vue 中 `el-input`（college）已替换为 `el-select` + `el-option`
+- [x] AdminTeacher.vue 的 `teacherRules` 包含 `college: [{ required: true, message: '请选择学院', trigger: 'change' }]`
+- [x] AdminTeacher.vue 的 `<script setup>` 中定义了 `collegeOptions` 常量数组
+- [x] 学院下拉组件模板结构与职称下拉组件（AdminTeacher.vue L33-40）格式一致
+- [x] 学院下拉组件使用 `v-for="c in collegeOptions"` 动态渲染选项
+- [x] `AdminStudent.college.test.js` 新增 collegeOptions 数据源 + 必填校验测试（5 tests pass）
+- [x] `npm test` 全部测试通过（50/50，无回归）
+- [ ] 学生管理弹窗：点击学院输入框展开下拉菜单（需浏览器手动验证）
+- [ ] 学生管理弹窗：选择学院后输入框回填，弹窗收起（需浏览器手动验证）
+- [ ] 学生管理弹窗：学院字段禁止手动输入和粘贴（需浏览器手动验证）
+- [ ] 学生管理弹窗：未选择学院提交时弹出「请选择学院」（需浏览器手动验证）
+- [ ] 学生管理弹窗：编辑已有记录时学院下拉正确回显（需浏览器手动验证）
+- [ ] 教师管理弹窗：学院下拉选择器交互与职称组件一致（需浏览器手动验证）
+- [ ] 教师管理弹窗：未选择学院提交时弹出「请选择学院」（需浏览器手动验证）
+- [x] 原有增删改查功能不受影响（npm test 50/50 通过，API 测试已验证）
+- [x] 下拉弹窗圆角、阴影、选中高亮色与 Element Plus 默认样式一致（使用 el-select 原生样式，与职称下拉一致）

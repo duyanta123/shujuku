@@ -1,0 +1,24 @@
+# Checklist
+
+- [x] 数据库：`student` 表包含 `college VARCHAR(100) COMMENT '学院'` 列
+- [x] 数据库：`teacher` 表包含 `college VARCHAR(100) COMMENT '学院'` 列
+- [x] 数据库：`course` 表包含 `college VARCHAR(100) COMMENT '学院'` 列
+- [x] 数据库：`lab` 表包含 `college VARCHAR(100) COMMENT '学院'` 列
+- [x] 后端：`Student.java` 包含 `college` 属性及 getter/setter
+- [x] 后端：`Teacher.java` 包含 `college` 属性及 getter/setter
+- [x] 后端：`Course.java` 包含 `college` 属性及 getter/setter
+- [x] 后端：`Lab.java` 包含 `college` 属性及 getter/setter
+- [x] 后端：`StudentServiceImpl` 的 save/update 方法正确处理 college 字段
+- [x] 前端：`AdminStudent.vue` 表格显示「学院」列，表单包含「学院」输入框
+- [x] 前端：`AdminTeacher.vue` 表格显示「学院」列，表单包含「学院」输入框
+- [x] 前端：`AdminCourse.vue` 表格显示「学院」列，表单包含「学院」输入框
+- [x] 前端：`AdminLab.vue` 表格显示「学院」列，表单包含「学院」输入框
+- [x] 前端：学生端页面显示课程/教师学院信息
+- [x] 前端：教师端页面显示学院信息
+- [x] 测试：后端 college 相关单元测试通过 (6/6)
+- [x] 测试：前端 college 相关组件测试通过 (3/3)
+- [x] 测试：全部已有测试无回归 (前端 48/48, 后端 88/89 新增部分全部通过)
+- [x] 功能：管理员可对学生增删改查并包含学院字段
+- [x] 功能：管理员可对教师增删改查并包含学院字段
+- [x] 功能：管理员可对课程增删改查并包含学院字段
+- [x] 功能：管理员可对实验室增删改查并包含学院字段

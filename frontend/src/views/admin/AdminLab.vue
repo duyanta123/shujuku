@@ -7,8 +7,9 @@
 
     <div class="table-responsive">
       <el-table :data="labList" stripe>
-        <el-table-column prop="labName" label="实验室名称" min-width="200" />
-        <el-table-column prop="location" label="地点" min-width="200" />
+        <el-table-column prop="labName" label="实验室名称" min-width="180" />
+        <el-table-column prop="college" label="学院" min-width="150" />
+        <el-table-column prop="location" label="地点" min-width="180" />
         <el-table-column prop="capacity" label="容量" width="120" />
         <el-table-column label="操作" width="180" align="center">
           <template #default="scope">
@@ -26,6 +27,9 @@
         </el-form-item>
         <el-form-item label="地点" prop="location">
           <el-input v-model="labForm.location" placeholder="请输入地点" />
+        </el-form-item>
+        <el-form-item label="学院" prop="college">
+          <el-input v-model="labForm.college" placeholder="请输入学院" />
         </el-form-item>
         <el-form-item label="容量" prop="capacity">
           <el-input-number v-model="labForm.capacity" />
@@ -48,7 +52,7 @@ const labList = ref([])
 const dialogVisible = ref(false)
 const dialogTitle = ref('添加实验室')
 const labFormRef = ref(null)
-const labForm = ref({ id: null, labName: '', location: '', capacity: 30 })
+const labForm = ref({ id: null, labName: '', location: '', college: '', capacity: 30 })
 
 const labRules = {
   labName: [
@@ -80,7 +84,7 @@ const loadLabs = async () => {
 
 const handleAdd = () => {
   dialogTitle.value = '添加实验室'
-  labForm.value = { id: null, labName: '', location: '', capacity: 30 }
+  labForm.value = { id: null, labName: '', location: '', college: '', capacity: 30 }
   labFormRef.value?.resetFields()
   dialogVisible.value = true
 }

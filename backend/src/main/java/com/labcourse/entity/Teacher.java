@@ -2,6 +2,7 @@ package com.labcourse.entity;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Size;
 import java.time.LocalDateTime;
 
 @Entity
@@ -22,12 +23,15 @@ public class Teacher {
     private String password;
     
     // Security fix (HIGH-001): Refresh Token 用于Token轮转
-    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @Column(name = "refresh_token", length = 512)
     private String refreshToken;
     
     @Column(name = "title", length = 50)
     private String title;
+    
+    @Size(max = 100)
+    @Column(name = "college", length = 100)
+    private String college;
     
     @Column(name = "created_at")
     private LocalDateTime createdAt;
@@ -54,6 +58,9 @@ public class Teacher {
 
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
+
+    public String getCollege() { return college; }
+    public void setCollege(String college) { this.college = college; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

@@ -21,7 +21,8 @@
         <el-table-column prop="student_no" label="学号" width="150" />
         <el-table-column prop="name" label="姓名" width="120" />
         <el-table-column prop="gender" label="性别" width="80" />
-        <el-table-column prop="major" label="专业" width="200" />
+        <el-table-column prop="major" label="专业" width="180" />
+        <el-table-column prop="college" label="学院" width="180" />
         <el-table-column prop="select_time" label="选课时间" min-width="180" />
       </el-table>
     </div>

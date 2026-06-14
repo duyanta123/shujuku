@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 @SuppressWarnings("null")
@@ -36,12 +37,13 @@ public class CourseServiceImpl implements CourseService {
                 l.location,
                 c.course_time,
                 c.max_count,
+                c.college,
                 COUNT(s.id) AS selected_count
             FROM course c
             LEFT JOIN teacher t ON c.teacher_id = t.id
             LEFT JOIN lab l ON c.lab_id = l.id
             LEFT JOIN selection s ON c.id = s.course_id
-            GROUP BY c.id, c.course_name, t.name, l.lab_name, l.location, c.course_time, c.max_count
+            GROUP BY c.id, c.course_name, t.name, l.lab_name, l.location, c.course_time, c.max_count, c.college
             ORDER BY c.id
             """;
         return jdbcTemplate.queryForList(sql);
@@ -60,8 +62,19 @@ public class CourseServiceImpl implements CourseService {
 
     @Override
     public boolean updateById(Course course) {
-        courseRepository.save(course);
-        return true;
+        Optional<Course> existingOpt = courseRepository.findById(course.getId());
+        if (existingOpt.isPresent()) {
+            Course existing = existingOpt.get();
+            if (course.getCourseName() != null) { existing.setCourseName(course.getCourseName()); }
+            if (course.getTeacherId() != null) { existing.setTeacherId(course.getTeacherId()); }
+            if (course.getLabId() != null) { existing.setLabId(course.getLabId()); }
+            if (course.getCourseTime() != null) { existing.setCourseTime(course.getCourseTime()); }
+            if (course.getMaxCount() != null) { existing.setMaxCount(course.getMaxCount()); }
+            if (course.getCollege() != null) { existing.setCollege(course.getCollege()); }
+            courseRepository.save(existing);
+            return true;
+        }
+        return false;
     }
 
     @Override

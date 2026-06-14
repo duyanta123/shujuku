@@ -1,6 +1,6 @@
 # 实验选课系统 — Code Wiki
 
-> **版本**: 1.0.0 | **最后更新**: 2026-06-13 | **文档类型**: 结构化代码知识库
+> **版本**: 1.1.0 | **最后更新**: 2026-06-14 | **文档类型**: 结构化代码知识库
 
 ---
 
@@ -58,6 +58,7 @@
 | 连接池 | HikariCP | — |
 | 构建工具 | Maven | 3.9 |
 | BFF 中间层 | Fastify (Node.js) | 4.28.0 |
+| BFF 安全 | Helmet + Rate Limit | 11.1.1 / 9.1.0 |
 | 前端框架 | Vue 3 (Composition API) | 3.4 |
 | 构建工具 | Vite | 5.0.8 |
 | UI 组件库 | Element Plus | 2.4.4 |
@@ -79,7 +80,8 @@
                              │ Vite Proxy /api → :4000 (BFF)
 ┌────────────────────────────┼────────────────────────────────────┐
 │                  BFF 中间层 (Fastify) :4000                     │
-│  CORS → Cookie → requestLogger → JWT验证 → 透明代理            │
+│  Helmet → CORS → RateLimit → Cookie → requestLogger            │
+│  → JWT验证(双Token) → 透明代理(X-Forwarded清理)                │
 │  /api/auth/* (自处理)    /api/* → 转发后端                      │
 └────────────────────────────┼────────────────────────────────────┘
                              │ HTTP Proxy → :8080
@@ -101,9 +103,10 @@
 ```
 用户浏览器 → :3000(Vite Dev Server) → Vite代理 /api → :4000(BFF)
   → Fastify Server
+    ├─ Helmet安全头 → CORS → RateLimit(100次/分钟/IP)
     ├─ 公开路由（登录/课程列表）→ 直接转发或处理
-    ├─ 认证路由 → jwtVerify中间件 → 验证HttpOnly Cookie
-    └─ 其他 → transparentProxy → 附加Authorization头 → :8080(Spring Boot)
+    ├─ 认证路由 → jwtVerify中间件 → 验证HttpOnly Cookie (优先bff_access_token)
+    └─ 其他 → transparentProxy → 附加Authorization头 + 清理X-Forwarded → :8080(Spring Boot)
       → JwtFilter(提取Token→设置SecurityContext)
       → SecurityConfig(RBAC权限校验)
       → Controller → Service → Repository → MySQL
@@ -114,7 +117,7 @@
 
 Vite 配置支持两种模式切换：
 
-- **BFF 模式** (`VITE_BFF_ENABLED=true`, 默认): 前端请求经 `:3000 → :4000 → :8080`，Token 存储在 HttpOnly Cookie 中
+- **BFF 模式** (`VITE_BFF_ENABLED=true`, 默认): 前端请求经 `:3000 → :4000 → :8080`，Token 存储在 HttpOnly Cookie 中（双Token：Access Token 30分钟 + Refresh Token 7天）
 - **降级模式** (`VITE_BFF_ENABLED=false`): 前端直接代理到 `:3000 → :8080`，Token 存储在 localStorage 中
 
 ---
@@ -150,38 +153,43 @@ d:\789\
 │       ├── main/resources/
 │       │   ├── application.yml              # 默认配置
 │       │   └── application-prod.yml         # 生产配置
-│       └── test/java/com/labcourse/        # 测试 (5 类, 73 用例)
+│       └── test/java/com/labcourse/        # 测试 (8 类, 87+ 用例)
 │
 ├── bff/                                # Fastify BFF 中间层
 │   ├── package.json
-│   ├── .env / .env.example
+│   ├── .env.example
 │   └── src/
-│       ├── index.js                    # 入口
-│       ├── config.js                   # 配置
-│       ├── routes/auth.js              # 认证路由
+│       ├── index.js                    # 入口 (Helmet + RateLimit + 双Token)
+│       ├── config.js                   # 配置 (双Token Cookie 名称/有效期)
+│       ├── routes/auth.js              # 认证路由 (双Token 签发/刷新/登出)
 │       ├── middleware/
-│       │   ├── jwtVerify.js
+│       │   ├── jwtVerify.js            # JWT 验证 (优先 bff_access_token)
 │       │   ├── errorHandler.js
 │       │   └── requestLogger.js
 │       ├── proxy/
-│       │   ├── transparentProxy.js     # 透明代理
+│       │   ├── transparentProxy.js     # 透明代理 (X-Forwarded清理)
 │       │   └── proxyMapping.js         # 路由映射
 │       ├── services/backendClient.js   # 后端 HTTP 客户端
-│       └── utils/logger.js             # 日志工具
+│       └── utils/logger.js             # 日志工具 (脱敏)
+│   └── tests/                          # BFF 测试 (5 个测试文件)
 │
 ├── frontend/                           # Vue 3 前端
 │   ├── package.json
 │   ├── vite.config.js
+│   ├── .env.development
 │   ├── index.html
 │   └── src/
 │       ├── main.js                     # 入口
 │       ├── App.vue                     # 根组件
 │       ├── api/                        # API 封装 (9 个)
-│       ├── router/index.js             # 路由 + 导航守卫
+│       ├── router/index.js             # 路由 + 导航守卫 (BFF模式下信任后端授权)
 │       ├── utils/                      # 工具模块 (7 个)
 │       ├── views/                      # 视图组件 (16 个)
-│       │   ├── Login.vue
+│       │   ├── Login.vue               # BFF 模式仅存储 id
+│       │   ├── Login.test.js           # 登录安全测试 (4 用例)
+│       │   ├── Login.bff.test.js       # BFF 模式登录测试 (2 用例)
 │       │   ├── student/ (6)  teacher/ (5)  admin/ (5)
+│       │   │   └── admin/AdminStudent.college.test.js  # 学院字段测试 (9 用例)
 │       └── styles/global.css
 │
 ├── database/                           # 数据库脚本
@@ -233,7 +241,8 @@ public class LabCourseApplication {
 |----------|----------|------|
 | `/api/student/login`, `/api/teacher/login`, `/api/admin/login` | 匿名 | 登录接口 |
 | `/api/course/list`, `/api/course/list/simple` | 匿名 | 课程列表 |
-| `/api/auth/refresh`, `/api/auth/validate` | 认证即可 | Token 刷新/验证 |
+| `/api/auth/refresh`, `/api/auth/logout` | 匿名 (内部自行验证) | Token 刷新/登出 |
+| `/api/auth/validate` | 认证即可 | Token 验证 |
 | `/api/student/add,update,delete,list` | ROLE_admin | 学生管理 |
 | `/api/teacher/add,update,delete,list` | ROLE_admin | 教师管理 |
 | `/api/course/add,update,delete` | ROLE_admin | 课程管理 |
@@ -492,14 +501,18 @@ public class LabCourseApplication {
 | 实体类 | 对应表 | 核心字段 |
 |--------|--------|----------|
 | `Admin` | admin | id, username, password |
-| `Student` | student | id, studentNo, name, gender, major, password |
-| `Teacher` | teacher | id, teacherNo, name, title, password |
-| `Course` | course | id, courseName, teacherId, labId, courseTime, maxCount |
-| `Lab` | lab | id, labName, location, capacity |
+| `Student` | student | id, studentNo, name, gender, major, college, password, refreshToken |
+| `Teacher` | teacher | id, teacherNo, name, title, college, password, refreshToken |
+| `Course` | course | id, courseName, teacherId, labId, courseTime, maxCount, college |
+| `Lab` | lab | id, labName, location, capacity, college |
 | `Selection` | selection | id, studentId, courseId, selectTime |
 | `Score` | score | id, studentId, courseId, score |
 | `Attendance` | attendance | id, studentId, courseId, attendanceStatus, attendanceDate, modifiedBy, modifyTime, modifyReason |
 | `AttendanceStatus` | — (枚举) | 出勤, 请假, 缺勤, 迟到 |
+
+**学院字段 (college)**: Student、Teacher、Course、Lab 四个实体均包含 `college` 字段（VARCHAR(100)），使用 `@Size(max=100)` 进行长度校验。前端管理员页面通过下拉选择器（10 个预设学院）输入。
+
+**Refresh Token**: Student 和 Teacher 实体包含 `refreshToken` 字段（VARCHAR(512)），用于 Token 轮转机制，存储在后端数据库中。
 
 所有实体类都使用 `@PrePersist` / `@PreUpdate` 自动管理 `createdAt` / `updatedAt` 时间戳。
 
@@ -542,12 +555,12 @@ public class AccountLockedException extends RuntimeException {
 
 **配置项** (`application.yml`):
 
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| `jwt.secret` | `lab-course-system-secret-key-2024-very-long-secret` | 签名密钥 |
-| `jwt.expiration` | `86400000` (24h) | Token 有效期(毫秒) |
+| 配置项 | 环境变量 | 说明 |
+|--------|----------|------|
+| `jwt.secret` | `JWT_SECRET` (必须) | 签名密钥，必须从环境变量加载 |
+| `jwt.expiration` | `JWT_EXPIRATION` | Token 有效期(毫秒)，默认 86400000 (24h) |
 
-**签名算法**: HS256 (HMAC-SHA256)
+**签名算法**: HS256/HS384/HS512 (与 BFF 层 `Keys.hmacShaKeyFor()` 的自动算法选择一致)
 
 ---
 
@@ -556,8 +569,10 @@ public class AccountLockedException extends RuntimeException {
 BFF (Backend For Frontend) 层是基于 **Fastify 4.x** 构建的 Node.js 中间服务，运行在 `:4000`。主要职责：
 
 - 作为前端与后端的**认证网关**，将 JWT Token 存储在 HttpOnly Cookie 中
+- 实现**双Token 机制**：Access Token (30分钟) + Refresh Token (7天) 分离存储
 - 对外提供**统一的 API 入口**，对内透明代理到 Spring Boot
-- 处理**登录**、**Token 刷新**、**登出**等认证相关操作
+- 处理**登录**、**Token 刷新（轮转）**、**登出**等认证相关操作
+- 提供**安全防护**：Helmet 安全头、Rate Limiting、请求体大小限制、X-Forwarded 清理
 - 提供**请求日志**、**错误处理**等横切关注点
 
 ### 5.1 入口与配置
@@ -568,11 +583,12 @@ BFF (Backend For Frontend) 层是基于 **Fastify 4.x** 构建的 Node.js 中间
 
 核心函数 `buildApp()` 构建 Fastify 应用：
 
-1. 注册插件：`@fastify/cors`、`@fastify/cookie`、`@fastify/formbody`
-2. 注册请求日志钩子
-3. 设置认证路由 (`/api/student/login`, `/api/teacher/login`, `/api/admin/login`, `/api/auth/refresh`, `/api/auth/logout`)
-4. 注册透明代理插件 (处理其他所有 `/api/*` 请求)
-5. 设置全局错误处理
+1. 注册安全插件：`@fastify/helmet` (CSP + X-Frame-Options)、`@fastify/rate-limit` (100次/分钟/IP)
+2. 注册基础插件：`@fastify/cors`、`@fastify/cookie`、`@fastify/formbody` (1MB限制)
+3. 注册请求日志钩子
+4. 设置认证路由 (`/api/student/login`, `/api/teacher/login`, `/api/admin/login`, `/api/auth/refresh`, `/api/auth/logout`)
+5. 注册透明代理插件 (处理其他所有 `/api/*` 请求)
+6. 设置全局错误处理
 
 导出 `buildApp()` 用于测试，直接运行时调用 `start()` 启动。
 
@@ -585,10 +601,11 @@ BFF (Backend For Frontend) 层是基于 **Fastify 4.x** 构建的 Node.js 中间
 | 端口 | `BFF_PORT` | `4000` |
 | 后端地址 | `BACKEND_URL` | `http://localhost:8080` |
 | 运行环境 | `NODE_ENV` | `development` |
-| JWT 密钥 | `JWT_SECRET` | (与后端一致) |
+| JWT 密钥 | `JWT_SECRET` | (必须设置) |
 | JWT 有效期 | `JWT_EXPIRATION` | `86400000` (24h) |
-| Cookie 名称 | — | `bff_token` |
-| Cookie 有效期 | — | 24 小时 |
+| Access Token Cookie | `bff_access_token` | 30分钟 |
+| Refresh Token Cookie | `bff_refresh_token` | 7天 |
+| 兼容旧版 Cookie | `bff_token` | 24小时 |
 | 日志级别 | `LOG_LEVEL` | `info` |
 
 ---
@@ -599,16 +616,21 @@ BFF (Backend For Frontend) 层是基于 **Fastify 4.x** 构建的 Node.js 中间
 
 **文件**: [`auth.js`](file:///d:/789/bff/src/routes/auth.js)
 
-**`createLoginHandler` 工厂函数**: 创建通用的登录处理函数。
+**`createLoginHandler` 工厂函数**: 创建通用的登录处理函数，支持双Token 签发和旧版单Token 兼容。
 
 ```
-登录流程:
+登录流程 (双Token模式):
   参数校验(用户名+密码非空) 
   → 转发请求到后端 (/api/student|teacher|admin/login) 
-  → 成功后从响应提取 Token 
-  → 签发 HttpOnly Cookie (bff_token) 
+  → 成功后从响应提取 accessToken + refreshToken
+  → 签发 HttpOnly Cookie:
+    ├─ bff_access_token (30分钟, path=/)
+    └─ bff_refresh_token (7天, path=/api/auth)
   → 返回用户信息(不含 Token，前端通过 Cookie 使用)
   → 失败则返回 401 或 502
+
+兼容旧版 (单Token):
+  → 签发 bff_token Cookie (24小时, path=/)
 ```
 
 三个登录路由使用不同的 `usernameField`:
@@ -616,9 +638,9 @@ BFF (Backend For Frontend) 层是基于 **Fastify 4.x** 构建的 Node.js 中间
 - `/api/teacher/login` → `teacherNo`
 - `/api/admin/login` → `username`
 
-**`/api/auth/refresh`**: 验证 Cookie 中的 Token → BFF 自主签发新 Token（共享同一 JWT 密钥） → 更新 Cookie
+**`/api/auth/refresh`**: 读取 `bff_refresh_token` Cookie → 透传到后端执行 Token 轮转刷新 → 后端返回新的 accessToken 和 refreshToken → 更新两个 Cookie
 
-**`/api/auth/logout`**: 清除 `bff_token` Cookie
+**`/api/auth/logout`**: 清除 `bff_access_token`、`bff_refresh_token`、`bff_token` 三个 Cookie → 通知后端清除 refreshToken
 
 ---
 
@@ -630,13 +652,11 @@ BFF (Backend For Frontend) 层是基于 **Fastify 4.x** 构建的 Node.js 中间
 
 | 功能 | 说明 |
 |------|------|
-| Token 来源 | 优先从 Cookie (`bff_token`) 读取，fallback 到 `Authorization: Bearer` 头 |
-| 验证逻辑 | 使用 `jsonwebtoken.verify()` 验证签名和过期时间 |
+| Token 来源 | 优先从 Cookie (`bff_access_token`) 读取，fallback 到 `bff_token` (兼容旧版)，再 fallback 到 `Authorization: Bearer` 头 |
+| 验证逻辑 | 使用 `jsonwebtoken.verify()` 验证签名和过期时间，支持 HS256/HS384/HS512 算法 |
 | Token 透传 | 验证通过后将 Token 重新附加到 `request.headers.authorization`，以便透传后端 |
 | 用户注入 | 验证通过后设置 `request.user = { userId, username, role }` |
-| 错误处理 | 过期返回 401 + "Token 已过期"，无效返回 401 + "Token 无效" |
-
-**`optionalJwt`**: 可选的 JWT 验证，无论成功失败都继续处理。
+| 错误处理 | 过期返回 401 + "Token 已过期" 并清除 Cookie，无效返回 401 + "Token 无效" |
 
 #### errorHandler
 
@@ -670,7 +690,7 @@ authenticated: [                    // 需要 JWT
   '/api/auth/refresh', '/api/auth/validate',
   '/api/selection/', '/api/attendance/',
   '/api/student/', '/api/teacher/',
-  '/api/admin/', '/api/score/', '/api/lab/'
+  '/api/admin/', '/api/score/', '/api/course/', '/api/lab/'
 ]
 ```
 
@@ -684,7 +704,8 @@ authenticated: [                    // 需要 JWT
 
 1. **preHandler**: 根据 proxyMapping 决定是否需要 `jwtVerify`
 2. **handler**: 转发请求到后端 (`config.backendUrl`)，透传请求头/请求体/状态码/响应头
-3. **特殊处理**: 识别二进制响应（Excel 导出等），使用 `arrayBuffer` 处理
+3. **安全处理**: 清理客户端传入的 `X-Forwarded-*` 头（防 IP 欺骗），设置正确的代理头
+4. **特殊处理**: 识别二进制响应（Excel 导出等），使用 `arrayBuffer` 处理
 
 ---
 
@@ -791,7 +812,8 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 
 `beforeEach` 守卫实现：
 - 无 Token → 重定向到 `/login`
-- Token 存在但角色不匹配 → 重定向到对应首页
+- **BFF 模式** (`_bffMode: true`): 信任后端 API 授权，前端路由不做角色校验
+- **降级模式**: Token 存在但角色不匹配 → 重定向到对应首页
 - 已登录访问 `/login` → 重定向到对应首页
 
 #### 嵌套路由
@@ -891,6 +913,8 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 
 角色选择（学生/教师/管理员）→ 表单输入 → 表单验证 → 登录请求 → 存储用户信息 → 跳转角色首页。
 
+**BFF 模式存储策略**: 登录成功后仅存储 `{ _bffMode: true, token: 'bff-cookie', id: result.data?.id }`，不存储敏感身份信息（如角色、token 等），由后端 API 授权和 BFF Cookie 管理。这确保了前端不持有真实 Token，且考勤等 API 调用可通过 `id` 字段正常获取 studentId。
+
 #### 布局组件
 
 | 组件 | 角色 | 侧边栏菜单 |
@@ -965,6 +989,7 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 | name | VARCHAR(50) | 非空 | 姓名 |
 | gender | VARCHAR(10) | — | 性别 |
 | major | VARCHAR(100) | — | 专业 |
+| college | VARCHAR(100) | — | 学院 |
 | password | VARCHAR(100) | 非空 | 密码 (BCrypt) |
 
 #### teacher (教师表)
@@ -975,6 +1000,7 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 | teacher_no | VARCHAR(20) UNIQUE | 非空唯一 | 工号 |
 | name | VARCHAR(50) | 非空 | 姓名 |
 | title | VARCHAR(50) | — | 职称 |
+| college | VARCHAR(100) | — | 学院 |
 | password | VARCHAR(100) | 非空 | 密码 (BCrypt) |
 
 #### admin (管理员表)
@@ -993,6 +1019,7 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 | lab_name | VARCHAR(100) | 非空 | 实验室名称 |
 | location | VARCHAR(200) | — | 地点 |
 | capacity | INT | — | 容量 |
+| college | VARCHAR(100) | — | 学院 |
 
 #### course (课程表)
 
@@ -1004,6 +1031,7 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 | lab_id | BIGINT FK→lab(id) | — | 上课实验室 |
 | course_time | VARCHAR(100) | — | 上课时间 (如 "周一 1-2节") |
 | max_count | INT | 默认30 | 最大选课人数 |
+| college | VARCHAR(100) | — | 学院 |
 
 #### selection (选课表)
 
@@ -1066,7 +1094,11 @@ idx_attendance_course  ON attendance(course_id)
 ```
 用户登录 → 输入账号密码
   → 后端验证密码 (BCrypt匹配)
-    ├─ 成功 → 生成 JWT Token → BFF签发 HttpOnly Cookie → 返回用户信息
+    ├─ 成功 → 生成 JWT AccessToken + RefreshToken
+    │         → BFF签发双HttpOnly Cookie:
+    │           ├─ bff_access_token (30分钟, path=/)
+    │           └─ bff_refresh_token (7天, path=/api/auth)
+    │         → 返回用户信息 (不含Token)
     └─ 失败 → LoginAttemptService 记录失败
       ├─ <5次 → 返回错误 + 剩余次数
       └─ ≥5次(15分钟内) → 锁定30分钟 → 返回 HTTP 423
@@ -1076,26 +1108,44 @@ idx_attendance_course  ON attendance(course_id)
 
 ```
 每个请求:
-  → BFF层: Cookie提取Token → jwt.verify() → 附加Authorization头
+  → BFF层: Helmet安全头 → CORS → RateLimit(100次/分钟/IP)
+  → Cookie提取Token (优先bff_access_token) → jwt.verify() → 附加Authorization头
+  → 清理客户端X-Forwarded-*头 → 设置正确代理头
   → 后端: JwtFilter提取Token → 设置SecurityContext
   → SecurityConfig: 路由级RBAC鉴权
 ```
 
-### 8.3 安全特性清单
+### 8.3 Token 刷新 (轮转)
+
+```
+Access Token 即将过期:
+  → 前端静默请求 /api/auth/refresh (携带 Cookie)
+  → BFF 读取 bff_refresh_token → 透传到后端
+  → 后端验证 refreshToken → 生成新 Token 对 → 旧 refreshToken 失效
+  → BFF 更新两个 Cookie → 完成轮转
+```
+
+### 8.4 安全特性清单
 
 | 特性 | 实现方式 |
 |------|----------|
 | 密码存储 | BCrypt 不可逆哈希 |
 | 密码迁移 | `PasswordMigration` 自动升级明文密码 |
 | 登录锁定 | `LoginAttemptService` 内存计数 |
-| JWT 签名 | HS256 + 密钥 |
-| Token 有效期 | 24 小时可配置 |
+| JWT 签名 | HS256/HS384/HS512 + 密钥 |
+| Token 有效期 | Access 30分钟 / Refresh 7天 |
 | Token 存储 | HttpOnly Cookie (BFF模式) / localStorage (降级) |
+| Token 轮转 | Refresh Token 使用后立即失效，颁发新 Token 对 |
 | CSRF 防护 | 前后端分离 + 无状态会话 |
-| CORS | 仅允许 `localhost:3000` 和 `localhost:4000` |
-| 参数校验 | `@Valid` + Spring Validation |
+| CORS | 仅允许 `localhost:3000` 和 `localhost:4000`，显式 allowedHeaders |
+| Helmet 安全头 | CSP、X-Frame-Options: DENY 等 |
+| 速率限制 | 全局 100次/分钟/IP (BFF) |
+| 请求体限制 | 1MB (BFF formbody) |
+| X-Forwarded 清理 | 防止 IP 欺骗攻击 |
+| 参数校验 | `@Valid` + Spring Validation + `@Size(max=100)` |
 | 全局异常 | 统一错误响应格式 |
 | RBAC | `student` / `teacher` / `admin` 三级角色 |
+| 前端安全 | 测试账号仅开发环境可见，BFF 模式不存储敏感信息 |
 
 ---
 
@@ -1134,11 +1184,21 @@ idx_attendance_course  ON attendance(course_id)
 | 测试类 | 用例数 | 覆盖内容 |
 |--------|--------|---------|
 | `AttendanceServiceTest` | 30 | 签到流程、考勤查询、状态修改、离线队列、数据一致性 |
+| `CollegeFieldTest` | 14 | 学院字段 @Size 约束、partial update、空值/超长边界 |
 | `OfflineQueueRecoveryTest` | 16 | 离线队列恢复、数据损坏处理、并发访问、重试 |
 | `PasswordEncoderTest` | 10 | 密码编码、匹配验证、边界值 |
 | `JwtUtilTest` | 9 | Token 生成、解析、过期验证 |
 | `SecurityIntegrationTest` | 8 | 登录认证、权限控制、Token 安全 |
-| **总计** | **73** | |
+| `AttendanceLoggingTest` | — | 考勤日志输出验证 |
+| `PasswordMigrationTest` | — | 密码自动迁移验证 |
+| BFF `auth.integration.test.js` | 50+ | 登录/刷新/登出全流程、安全测试、并发测试 |
+| 前端 `Login.test.js` | 4 | 测试账号仅开发环境可见 |
+| 前端 `Login.bff.test.js` | 2 | BFF 模式存储 id 验证 |
+| 前端 `AdminStudent.college.test.js` | 9 | 学院字段下拉选择器、表单校验 |
+| 前端 `passwordValidator.test.js` | 41 | 密码复杂度、边界值、确认密码校验 |
+| **总计后端** | **87+** | |
+| **总计前端** | **56+** | |
+| **总计 BFF** | **50+** | |
 
 ---
 
@@ -1260,10 +1320,12 @@ lab-course-system (Spring Boot 3.2.0)
 lab-course-bff (Fastify 4.28.0)
 ├── @fastify/cookie                  # Cookie 处理
 ├── @fastify/cors                    # CORS
-├── @fastify/formbody                # 表单解析
-├── jsonwebtoken                     # JWT 签发/验证
+├── @fastify/formbody                # 表单解析 (1MB限制)
+├── @fastify/helmet                  # 安全头 (CSP, X-Frame-Options)
+├── @fastify/rate-limit              # 速率限制 (100次/分钟/IP)
+├── dotenv                           # 环境变量管理
+├── jsonwebtoken                     # JWT 签发/验证 (HS256/HS384/HS512)
 ├── pino + pino-pretty              # 日志
-├── zod                              # 参数校验
 └── vitest (dev)                     # 测试
 ```
 
@@ -1288,13 +1350,17 @@ API 封装层 (api/*.js)
   ↓ (import)
 request.js (Axios 实例)
   ↓ (import)
-tokenManager.js
+tokenManager.js (BFF模式: Cookie / 降级模式: localStorage)
   ↓ (HTTP)
 BFF (Fastify) 或 直接到 Spring Boot
+  ├─ Helmet → CORS → RateLimit
+  ├─ Cookie提取 (bff_access_token → bff_token → Auth Header)
+  ├─ 公开路由 → 直接转发 | 认证路由 → JWT验证
+  └─ transparentProxy → X-Forwarded清理 → 附加Authorization头
   ↓
 Spring Boot Controller
   ↓
-Service 实现
+Service 实现 (含 partial update 逻辑)
   ↓
 JPA Repository
   ↓

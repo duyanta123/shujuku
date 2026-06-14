@@ -75,6 +75,9 @@ public class TeacherServiceImpl implements TeacherService {
             if (teacher.getTitle() != null) {
                 existing.setTitle(teacher.getTitle());
             }
+            if (teacher.getCollege() != null) {
+                existing.setCollege(teacher.getCollege());
+            }
             if (teacher.getPassword() != null && !teacher.getPassword().isEmpty()) {
                 existing.setPassword(passwordEncoder.encode(teacher.getPassword()));
             }

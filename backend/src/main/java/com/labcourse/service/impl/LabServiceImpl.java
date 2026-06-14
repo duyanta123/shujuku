@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @SuppressWarnings("null")
@@ -28,8 +29,17 @@ public class LabServiceImpl implements LabService {
 
     @Override
     public boolean updateById(Lab lab) {
-        labRepository.save(lab);
-        return true;
+        Optional<Lab> existingOpt = labRepository.findById(lab.getId());
+        if (existingOpt.isPresent()) {
+            Lab existing = existingOpt.get();
+            if (lab.getLabName() != null) { existing.setLabName(lab.getLabName()); }
+            if (lab.getLocation() != null) { existing.setLocation(lab.getLocation()); }
+            if (lab.getCapacity() != null) { existing.setCapacity(lab.getCapacity()); }
+            if (lab.getCollege() != null) { existing.setCollege(lab.getCollege()); }
+            labRepository.save(existing);
+            return true;
+        }
+        return false;
     }
 
     @Override
