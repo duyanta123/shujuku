@@ -28,6 +28,12 @@ public class Student {
     @Column(name = "college", length = 100)
     private String college;
     
+    @Column(name = "college_id")
+    private Long collegeId;
+    
+    @Column(name = "major_id")
+    private Long majorId;
+    
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @Column(name = "password", nullable = false, length = 100)
     private String password;
@@ -61,6 +67,12 @@ public class Student {
 
     public String getCollege() { return college; }
     public void setCollege(String college) { this.college = college; }
+
+    public Long getCollegeId() { return collegeId; }
+    public void setCollegeId(Long collegeId) { this.collegeId = collegeId; }
+
+    public Long getMajorId() { return majorId; }
+    public void setMajorId(Long majorId) { this.majorId = majorId; }
 
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }

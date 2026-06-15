@@ -2,6 +2,7 @@ package com.labcourse.service.impl;
 
 import com.labcourse.entity.Teacher;
 import com.labcourse.exception.AccountLockedException;
+import com.labcourse.repository.CourseTeacherRepository;
 import com.labcourse.repository.TeacherRepository;
 import com.labcourse.service.LoginAttemptService;
 import com.labcourse.service.TeacherService;
@@ -24,6 +25,9 @@ public class TeacherServiceImpl implements TeacherService {
 
     @Autowired
     private LoginAttemptService loginAttemptService;
+
+    @Autowired
+    private CourseTeacherRepository courseTeacherRepository;
 
     @Override
     public Teacher login(String teacherNo, String password) {
@@ -77,6 +81,14 @@ public class TeacherServiceImpl implements TeacherService {
             }
             if (teacher.getCollege() != null) {
                 existing.setCollege(teacher.getCollege());
+            }
+            if (teacher.getCollegeId() != null) {
+                if (existing.getCollegeId() != null && !existing.getCollegeId().equals(teacher.getCollegeId())) {
+                    if (courseTeacherRepository.findByTeacherId(teacher.getId()).isPresent()) {
+                        return false;
+                    }
+                }
+                existing.setCollegeId(teacher.getCollegeId());
             }
             if (teacher.getPassword() != null && !teacher.getPassword().isEmpty()) {
                 existing.setPassword(passwordEncoder.encode(teacher.getPassword()));

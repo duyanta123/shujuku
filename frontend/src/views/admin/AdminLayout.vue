@@ -39,6 +39,10 @@
           <span class="nav-icon">🔬</span>
           <span>实验室管理</span>
         </router-link>
+        <router-link to="/admin/college-major" class="nav-item" active-class="active" @click="sidebarOpen = false">
+          <span class="nav-icon">🏛️</span>
+          <span>学院专业管理</span>
+        </router-link>
       </nav>
 
       <div class="sidebar-footer">

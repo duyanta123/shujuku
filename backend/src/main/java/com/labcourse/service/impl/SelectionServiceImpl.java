@@ -2,8 +2,10 @@ package com.labcourse.service.impl;
 
 import com.labcourse.entity.Course;
 import com.labcourse.entity.Selection;
+import com.labcourse.entity.Student;
 import com.labcourse.repository.CourseRepository;
 import com.labcourse.repository.SelectionRepository;
+import com.labcourse.repository.StudentRepository;
 import com.labcourse.service.SelectionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 @SuppressWarnings("null")
@@ -26,6 +29,9 @@ public class SelectionServiceImpl implements SelectionService {
     
     @Autowired
     private CourseRepository courseRepository;
+
+    @Autowired
+    private StudentRepository studentRepository;
     
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -34,18 +40,37 @@ public class SelectionServiceImpl implements SelectionService {
     @Transactional
     public boolean addSelection(Long studentId, Long courseId) {
         try {
+            // Check course exists
+            Course course = courseRepository.findById(courseId).orElse(null);
+            if (course == null) {
+                logger.warn("选课失败：课程 {} 不存在", courseId);
+                return false;
+            }
+
+            // Check if course is REQUIRED - cannot manually select
+            if ("REQUIRED".equals(course.getCourseType())) {
+                logger.warn("选课失败：课程 {} 为必修课，由系统自动分配，无法手动选课", courseId);
+                return false;
+            }
+
+            // Check college matching
+            Optional<Student> studentOpt = studentRepository.findById(studentId);
+            if (studentOpt.isPresent()) {
+                Student student = studentOpt.get();
+                if (student.getCollegeId() != null && course.getCollegeId() != null
+                        && !student.getCollegeId().equals(course.getCollegeId())) {
+                    logger.warn("选课失败：学生 {} 学院ID={} 与课程 {} 学院ID={} 不匹配，仅可选择本学院的选修课",
+                            studentId, student.getCollegeId(), courseId, course.getCollegeId());
+                    return false;
+                }
+            }
+
             if (selectionRepository.findByStudentIdAndCourseId(studentId, courseId).isPresent()) {
                 logger.warn("选课失败：学生 {} 已选择课程 {}", studentId, courseId);
                 return false;
             }
 
             Long count = selectionRepository.countByCourseId(courseId);
-            Course course = courseRepository.findById(courseId).orElse(null);
-            
-            if (course == null) {
-                logger.warn("选课失败：课程 {} 不存在", courseId);
-                return false;
-            }
             
             if (count >= course.getMaxCount()) {
                 logger.warn("选课失败：课程 {} 人数已满 (已选 {} / 上限 {})", courseId, count, course.getMaxCount());

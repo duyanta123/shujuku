@@ -15,16 +15,20 @@ const publicPaths = [
 
 // ── 需要认证的路由 ──
 const authenticatedPaths = [
+  '/api/admin/',
+  '/api/attendance/',
   '/api/auth/refresh',
   '/api/auth/validate',
+  '/api/college/',
+  '/api/course/',
+  '/api/course-teacher/',
+  '/api/lab/',
+  '/api/major/',
+  '/api/major-required-course/',
+  '/api/score/',
   '/api/selection/',
-  '/api/attendance/',
   '/api/student/',
   '/api/teacher/',
-  '/api/admin/',
-  '/api/score/',
-  '/api/course/',
-  '/api/lab/',
 ]
 
 /**

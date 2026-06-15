@@ -62,6 +62,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/**").hasRole("admin")
                         .requestMatchers("/api/course/add", "/api/course/update", "/api/course/delete/**").hasRole("admin")
                         .requestMatchers("/api/lab/**").hasRole("admin")
+                        .requestMatchers("/api/college/**").hasRole("admin")
+                        .requestMatchers("/api/major/**").hasRole("admin")
                         // 其他需要认证
                         .anyRequest().authenticated()
                 )

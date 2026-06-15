@@ -26,6 +26,9 @@ public class Attendance {
     @Column(name = "attendance_date")
     private LocalDate attendanceDate;
 
+    @Column(name = "check_in_time", nullable = false)
+    private LocalDateTime checkInTime;
+
     @Column(name = "modified_by")
     private Long modifiedBy;
 
@@ -57,6 +60,9 @@ public class Attendance {
 
     public LocalDate getAttendanceDate() { return attendanceDate; }
     public void setAttendanceDate(LocalDate attendanceDate) { this.attendanceDate = attendanceDate; }
+
+    public LocalDateTime getCheckInTime() { return checkInTime; }
+    public void setCheckInTime(LocalDateTime checkInTime) { this.checkInTime = checkInTime; }
 
     public Long getModifiedBy() { return modifiedBy; }
     public void setModifiedBy(Long modifiedBy) { this.modifiedBy = modifiedBy; }

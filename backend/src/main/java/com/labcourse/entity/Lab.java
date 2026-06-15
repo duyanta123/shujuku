@@ -20,9 +20,13 @@ public class Lab {
     @Column(name = "capacity")
     private Integer capacity;
     
+    // @deprecated 计划 v2.1 删除，迁移至 collegeId
     @Size(max = 100)
     @Column(name = "college", length = 100)
     private String college;
+
+    @Column(name = "college_id")
+    private Long collegeId;
     
     @Column(name = "created_at")
     private LocalDateTime createdAt;
@@ -46,6 +50,9 @@ public class Lab {
 
     public String getCollege() { return college; }
     public void setCollege(String college) { this.college = college; }
+
+    public Long getCollegeId() { return collegeId; }
+    public void setCollegeId(Long collegeId) { this.collegeId = collegeId; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

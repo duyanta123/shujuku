@@ -10,8 +10,8 @@
         <el-table-column prop="studentNo" label="学号" width="150" />
         <el-table-column prop="name" label="姓名" width="120" />
         <el-table-column prop="gender" label="性别" width="80" />
-        <el-table-column prop="major" label="专业" min-width="180" />
-        <el-table-column prop="college" label="学院" min-width="180" />
+        <el-table-column prop="majorName" label="专业" min-width="180" />
+        <el-table-column prop="collegeName" label="学院" min-width="180" />
         <el-table-column label="操作" width="260" align="center">
           <template #default="scope">
             <el-button type="primary" size="small" text @click="handleEdit(scope.row)">编辑</el-button>
@@ -37,12 +37,14 @@
             <el-option label="女" value="女" />
           </el-select>
         </el-form-item>
-        <el-form-item label="专业" prop="major">
-          <el-input v-model="studentForm.major" placeholder="请输入专业" />
+        <el-form-item label="专业" prop="majorId">
+          <el-select v-model="studentForm.majorId" style="width:100%" placeholder="请先选择学院" filterable :loading="majorsLoading" :disabled="!studentForm.collegeId">
+            <el-option v-for="m in majorOptions" :key="m.id" :label="m.name" :value="m.id" />
+          </el-select>
         </el-form-item>
-        <el-form-item label="学院" prop="college">
-          <el-select v-model="studentForm.college" style="width:100%" placeholder="请选择学院">
-            <el-option v-for="c in collegeOptions" :key="c" :label="c" :value="c" />
+        <el-form-item label="学院" prop="collegeId">
+          <el-select v-model="studentForm.collegeId" style="width:100%" placeholder="请选择学院" filterable :loading="collegesLoading" @change="onCollegeChange">
+            <el-option v-for="c in collegeOptions" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="密码" prop="password">
@@ -52,7 +54,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSave">保存</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleSave">保存</el-button>
       </template>
     </el-dialog>
 
@@ -86,6 +88,8 @@
 import { ref, onMounted, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getStudentList, addStudent, updateStudent, deleteStudent } from '../../api/student'
+import { getCollegeList } from '../../api/college'
+import { getMajorsByCollegeId } from '../../api/major'
 import {
   validatePassword,
   validateConfirmPassword,
@@ -93,24 +97,17 @@ import {
   getPasswordValidationError
 } from '../../utils/passwordValidator'
 
-const collegeOptions = [
-  '数学与计算机科学学院',
-  '物理与电子工程学院',
-  '化学与材料科学学院',
-  '生命科学学院',
-  '地理与环境科学学院',
-  '信息工程学院',
-  '经济与管理学院',
-  '外国语学院',
-  '马克思主义学院',
-  '教育学院'
-]
+const collegeOptions = ref([])
+const majorOptions = ref([])
+const collegesLoading = ref(false)
+const majorsLoading = ref(false)
+const submitting = ref(false)
 
 const studentList = ref([])
 const dialogVisible = ref(false)
 const dialogTitle = ref('添加学生')
 const studentFormRef = ref(null)
-const studentForm = ref({ id: null, studentNo: '', name: '', gender: '', major: '', college: '', password: '' })
+const studentForm = ref({ id: null, studentNo: '', name: '', gender: '', majorId: null, collegeId: null, password: '' })
 
 const studentRules = {
   studentNo: [
@@ -123,10 +120,10 @@ const studentRules = {
   gender: [
     { required: true, message: '请选择性别', trigger: 'change' }
   ],
-  major: [
-    { required: true, message: '请输入专业', trigger: 'blur' }
+  majorId: [
+    { required: true, message: '请选择专业', trigger: 'change' }
   ],
-  college: [
+  collegeId: [
     { required: true, message: '请选择学院', trigger: 'change' }
   ],
   password: [
@@ -171,15 +168,19 @@ const loadStudents = async () => {
 
 const handleAdd = () => {
   dialogTitle.value = '添加学生'
-  studentForm.value = { id: null, studentNo: '', name: '', gender: '', major: '', college: '', password: '' }
+  studentForm.value = { id: null, studentNo: '', name: '', gender: '', majorId: null, collegeId: null, password: '' }
+  majorOptions.value = []
   studentFormRef.value?.resetFields()
   dialogVisible.value = true
 }
 
-const handleEdit = (row) => {
+const handleEdit = async (row) => {
   dialogTitle.value = '编辑学生'
   studentForm.value = { ...row, password: '' }
   studentFormRef.value?.resetFields()
+  if (row.collegeId) {
+    await loadMajorOptions(row.collegeId)
+  }
   dialogVisible.value = true
 }
 
@@ -189,6 +190,7 @@ const handleSave = async () => {
   } catch {
     return
   }
+  submitting.value = true
   try {
     const isUpdate = !!studentForm.value.id
     const result = isUpdate
@@ -202,6 +204,7 @@ const handleSave = async () => {
       ElMessage.error(result.message)
     }
   } catch (error) { ElMessage.error('保存失败') }
+  finally { submitting.value = false }
 }
 
 const handleResetPassword = (row) => {
@@ -253,7 +256,37 @@ const handleDelete = async (id) => {
   } catch (error) { if (error !== 'cancel') ElMessage.error('删除失败') }
 }
 
-onMounted(() => { loadStudents() })
+const onCollegeChange = (collegeId) => {
+  studentForm.value.majorId = null
+  majorOptions.value = []
+  if (collegeId) {
+    loadMajorOptions(collegeId)
+  }
+}
+
+const loadMajorOptions = async (collegeId) => {
+  majorsLoading.value = true
+  try {
+    const result = await getMajorsByCollegeId(collegeId)
+    if (result.success) {
+      majorOptions.value = result.data || []
+    }
+  } catch (error) { /* 静默 */ }
+  finally { majorsLoading.value = false }
+}
+
+const loadCollegeOptions = async () => {
+  collegesLoading.value = true
+  try {
+    const result = await getCollegeList({ status: 'ACTIVE', size: 999 })
+    if (result.success) {
+      collegeOptions.value = result.data?.records || result.data || []
+    }
+  } catch (error) { /* 静默 */ }
+  finally { collegesLoading.value = false }
+}
+
+onMounted(() => { loadStudents(); loadCollegeOptions() })
 </script>
 
 <style scoped>

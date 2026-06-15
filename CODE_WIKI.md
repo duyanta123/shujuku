@@ -1,6 +1,6 @@
 # 实验选课系统 — Code Wiki
 
-> **版本**: 1.1.0 | **最后更新**: 2026-06-14 | **文档类型**: 结构化代码知识库
+> **版本**: 2.1.0 | **最后更新**: 2026-06-15 | **文档类型**: 结构化代码知识库
 
 ---
 
@@ -32,9 +32,14 @@
    - 6.3 [路由 (router)](#63-路由-router)
    - 6.4 [工具模块 (utils)](#64-工具模块-utils)
    - 6.5 [视图组件 (views)](#65-视图组件-views)
+   - 6.6 [E2E 端到端测试](#66-e2e-端到端测试)
 7. [数据库设计](#7-数据库设计)
    - 7.1 [ER 图](#71-er-图)
    - 7.2 [表结构详细说明](#72-表结构详细说明)
+   - 7.3 [数据库索引设计表](#73-数据库索引设计表)
+   - 7.4 [外键约束明细表](#74-外键约束明细表)
+   - 7.5 [字段约束表](#75-字段约束表)
+   - 7.6 [数据库编程对象](#76-数据库编程对象)
 8. [安全体系](#8-安全体系)
 9. [CI/CD 持续集成](#9-cicd-持续集成)
 10. [项目运行方式](#10-项目运行方式)
@@ -44,7 +49,7 @@
 
 ## 1. 项目概述
 
-实验选课系统是一个面向**高校实验室课程管理**的完整 Web 应用，采用 **前后端分离 + BFF 中间层** 的三层架构。系统为学生、教师和管理员三类角色提供一站式实验课程管理解决方案，涵盖选课、考勤签到、成绩管理、课表展示、系统管理等核心场景。
+实验选课系统是一个面向**高校实验室课程管理**的完整 Web 应用，采用 **前后端分离 + BFF 中间层** 的三层架构。系统为学生、教师和管理员三类角色提供一站式实验课程管理解决方案，涵盖选课、考勤签到、成绩管理、课表展示、学院/专业管理、系统管理等核心场景。
 
 ### 技术栈总览
 
@@ -64,6 +69,32 @@
 | UI 组件库 | Element Plus | 2.4.4 |
 | HTTP 客户端 | Axios | 1.6.2 |
 | Excel 导出 | XLSX | 0.18.5 |
+| E2E 测试 | Playwright | 1.60.0 |
+| 单元测试 | Vitest | 4.1.8 |
+
+### v2.0.0 新增亮点
+
+- **学院/专业管理层级模型**：引入 `college` 和 `major` 独立表，通过外键关联替代原有字符串字段
+- **课程分类体系**：课程新增 `course_type` 字段，支持必修(REQUIRED)和选修(ELECTIVE)分类
+- **专业-必修课关联**：`major_required_course` 表定义专业教学计划中的必修课
+- **课程-教师分离**：`course_teacher` 表替代原有 `course.teacher_id` 单一绑定，为多教师授课预留扩展
+- **数据库外键约束**：全面采用 `ON DELETE RESTRICT ON UPDATE RESTRICT` 保护数据完整性
+- **软删除机制**：学院/专业删除采用状态标记(ACTIVE → INACTIVE)，避免物理删除引发的级联问题
+- **级联下拉选择器**：前端学院→专业级联下拉，支持筛选和加载状态
+- **E2E 端到端测试**：基于 Playwright 的 13 个 E2E 测试用例覆盖关键业务流程
+- **操作日志记录**：管理员对学院/专业的增删改操作记录到 SLF4J 日志
+
+### v2.1.0 新增亮点
+  - **外键约束全面加固**：所有 19 个外键统一采用 `ON DELETE RESTRICT ON UPDATE RESTRICT`，补全 selection/score/attendance 缺失的约束名和级联策略
+  - **数据完整性约束**：新增 score CHECK 约束(0-100)、gender CHECK 约束('男'/'女')
+  - **联合索引优化**：新增 idx_attendance_course_date、idx_major_college_status、idx_attendance_student_date 三个联合索引
+  - **lab 表规范化**：新增 college_id 外键列，与 student/teacher/course 保持一致
+  - **attendance 表字段完善**：新增 check_in_time 字段，将签到时间与记录创建时间分离
+  - **存储过程**：proc_check_attendance_status（签到判定）+ proc_check_course_selection_conflict（选课并发控制，含悲观锁+事务）
+  - **视图**：v_active_college、v_active_major（软删除过滤）+ v_student_course（多表关联简化）
+  - **触发器**：trigger_college_status_update（学院软删除时自动记录审计日志）
+  - **迁移与回滚脚本**：migrate_v1_to_v2.sql + rollback_v2_to_v1.sql
+  - **数据库级测试**：DatabaseConstraintTest（外键约束）+ DatabaseUniqueIndexTest（唯一索引）+ DatabaseConcurrencyTest（并发选课/签到）
 
 ---
 
@@ -76,6 +107,7 @@
 │                   前端 (Vue 3 + Vite) :3000                     │
 │  Login → Student Views / Teacher Views / Admin Views           │
 │  Axios + TokenManager + OfflineQueue + ScheduleParser          │
+│  E2E Tests (Playwright)                                        │
 └────────────────────────────┬────────────────────────────────────┘
                              │ Vite Proxy /api → :4000 (BFF)
 ┌────────────────────────────┼────────────────────────────────────┐
@@ -87,14 +119,15 @@
                              │ HTTP Proxy → :8080
 ┌────────────────────────────┼────────────────────────────────────┐
 │                   后端 (Spring Boot) :8080                      │
-│  JwtFilter → SecurityConfig(RBAC) → Controller → Service       │
+│  JwtFilter → SecurityConfig(@PreAuthorize) → Controller → Service
 │  → Repository (JPA) → MySQL                                    │
 │  GlobalExceptionHandler / PasswordMigration                    │
 └────────────────────────────┼────────────────────────────────────┘
                              │
                      ┌───────┴───────┐
                      │   MySQL 8.0   │
-                     │  8 张数据表    │
+                     │  13 张数据表   │
+                     │  + 1 张日志表  │
                      └───────────────┘
 ```
 
@@ -108,7 +141,7 @@
     ├─ 认证路由 → jwtVerify中间件 → 验证HttpOnly Cookie (优先bff_access_token)
     └─ 其他 → transparentProxy → 附加Authorization头 + 清理X-Forwarded → :8080(Spring Boot)
       → JwtFilter(提取Token→设置SecurityContext)
-      → SecurityConfig(RBAC权限校验)
+      → SecurityConfig(@PreAuthorize + RBAC权限校验)
       → Controller → Service → Repository → MySQL
       → 响应逐层返回
 ```
@@ -117,7 +150,7 @@
 
 Vite 配置支持两种模式切换：
 
-- **BFF 模式** (`VITE_BFF_ENABLED=true`, 默认): 前端请求经 `:3000 → :4000 → :8080`，Token 存储在 HttpOnly Cookie 中（双Token：Access Token 30分钟 + Refresh Token 7天）
+- **BFF 模式** (`VITE_BFF_ENABLED=true`, 默认): 前端请求经 `:3000 → :4000 → :8080`，Token 存储在 HttpOnly Cookie 中（双Token：bff_access_token 30分钟 + bff_refresh_token 7天）
 - **降级模式** (`VITE_BFF_ENABLED=false`): 前端直接代理到 `:3000 → :8080`，Token 存储在 localStorage 中
 
 ---
@@ -135,17 +168,18 @@ d:\789\
 │       ├── main/java/com/labcourse/
 │       │   ├── LabCourseApplication.java    # 启动类
 │       │   ├── config/                      # 配置层
-│       │   │   ├── SecurityConfig.java
+│       │   │   ├── SecurityConfig.java      # 安全配置 + CORS + @PreAuthorize
 │       │   │   ├── GlobalExceptionHandler.java
 │       │   │   └── PasswordMigration.java
 │       │   ├── filter/
 │       │   │   └── JwtFilter.java           # JWT 认证过滤器
-│       │   ├── controller/                  # 控制器层 (9 个)
-│       │   ├── service/                     # 服务接口 (9 个)
-│       │   │   ├── impl/                    # 服务实现 (8 个)
-│       │   │   └── LoginAttemptService.java
-│       │   ├── repository/                  # 数据访问层 (8 个)
-│       │   ├── entity/                      # 实体类 (9 个)
+│       │   ├── controller/                  # 控制器层 (11 个)
+│       │   ├── service/                     # 服务接口 (12 个)
+│       │   │   ├── impl/                    # 服务实现 (10 个)
+│       │   │   ├── LoginAttemptService.java
+│       │   │   └── MajorRequiredCourseService.java
+│       │   ├── repository/                  # 数据访问层 (12 个)
+│       │   ├── entity/                      # 实体类 (13 个)
 │       │   ├── exception/
 │       │   │   └── AccountLockedException.java
 │       │   └── util/
@@ -178,22 +212,28 @@ d:\789\
 │   ├── vite.config.js
 │   ├── .env.development
 │   ├── index.html
+│   ├── playwright.config.js            # Playwright E2E 配置
 │   └── src/
 │       ├── main.js                     # 入口
 │       ├── App.vue                     # 根组件
-│       ├── api/                        # API 封装 (9 个)
-│       ├── router/index.js             # 路由 + 导航守卫 (BFF模式下信任后端授权)
+│       ├── api/                        # API 封装 (12 个)
+│       ├── router/index.js             # 路由 + 导航守卫
 │       ├── utils/                      # 工具模块 (7 个)
-│       ├── views/                      # 视图组件 (16 个)
+│       ├── views/                      # 视图组件 (17 个)
 │       │   ├── Login.vue               # BFF 模式仅存储 id
 │       │   ├── Login.test.js           # 登录安全测试 (4 用例)
 │       │   ├── Login.bff.test.js       # BFF 模式登录测试 (2 用例)
-│       │   ├── student/ (6)  teacher/ (5)  admin/ (5)
-│       │   │   └── admin/AdminStudent.college.test.js  # 学院字段测试 (9 用例)
+│       │   ├── student/ (6)  teacher/ (5)  admin/ (6)
 │       └── styles/global.css
+│   └── tests/e2e/                      # E2E 测试 (13 个用例)
+│       ├── auth/  college/  major/
+│       ├── dialog/  ui/  business/
+│       └── scripts/
 │
 ├── database/                           # 数据库脚本
-│   ├── init_database.sql               # 初始化脚本（建表+种子数据）
+│   ├── init_database.sql               # 初始化脚本 (v2.1 — 13张表 + 1张日志表 + 种子数据)
+│   ├── procedures.sql                  # 存储过程 (v2.1 新增)
+│   ├── views_and_triggers.sql          # 视图与触发器 (v2.1 新增)
 │   └── queries.sql                     # 常用查询示例
 │
 └── README.md                           # 项目说明文档
@@ -228,9 +268,9 @@ public class LabCourseApplication {
 
 | 职责 | 说明 |
 |------|------|
-| RBAC 权限控制 | 基于 Spring Security 的接口级细粒度角色控制 |
+| RBAC 权限控制 | 基于 `@EnableMethodSecurity` + `@PreAuthorize` 的方法级权限 + `authorizeHttpRequests` 路由级控制 |
 | BCrypt 加密 | 提供 `PasswordEncoder` Bean (BCryptPasswordEncoder) |
-| CORS 配置 | 允许 `localhost:3000` 和 `localhost:4000` 跨域 |
+| CORS 配置 | 允许 `localhost:3000` 和 `localhost:4000` 跨域，显式声明 `allowedHeaders` |
 | 会话管理 | 无状态模式 (SessionCreationPolicy.STATELESS) |
 | JWT 集成 | 通过 `addFilterBefore` 在 `UsernamePasswordAuthenticationFilter` 之前注册 `JwtFilter` |
 | CSRF | 关闭 (前后端分离不需要) |
@@ -247,6 +287,8 @@ public class LabCourseApplication {
 | `/api/teacher/add,update,delete,list` | ROLE_admin | 教师管理 |
 | `/api/course/add,update,delete` | ROLE_admin | 课程管理 |
 | `/api/lab/**` | ROLE_admin | 实验室管理 |
+| `/api/college/**` | ROLE_admin | 学院管理 (v2.0 新增) |
+| `/api/major/**` | ROLE_admin | 专业管理 (v2.0 新增) |
 | `/api/selection/add,my,delete` | ROLE_student | 选课操作 |
 | `/api/attendance/check-in,history,server-time` | ROLE_student | 学生考勤 |
 | `/api/selection/studentList`, `/api/score/**` | ROLE_teacher | 教师查看学生/成绩 |
@@ -256,11 +298,11 @@ public class LabCourseApplication {
 
 **文件**: [`GlobalExceptionHandler.java`](file:///d:/789/backend/src/main/java/com/labcourse/config/GlobalExceptionHandler.java)
 
-全局异常拦截器，使用 `@RestControllerAdvice` 注解，统一处理三类异常：
+全局异常拦截器，使用 `@RestControllerAdvice` 注解，统一处理四类异常：
 
 | 异常类型 | HTTP 状态码 | 说明 |
 |----------|-------------|------|
-| `MethodArgumentNotValidException` | 400 | 参数校验失败，返回字段级错误详情 |
+| `MethodArgumentNotValidException` | 400 | 参数校验失败（`@Valid` 触发），返回字段级错误详情 |
 | `IllegalArgumentException` | 400 | 非法参数，返回错误消息 |
 | `AccountLockedException` | 423 | 账号锁定，返回剩余锁定分钟数 |
 | `Exception` (通用) | 500 | 服务器内部错误 |
@@ -292,6 +334,8 @@ public class LabCourseApplication {
 
 ### 4.4 控制器层 (controller)
 
+共 **11 个控制器** (v2.0 新增 CollegeController、MajorController)：
+
 #### AuthController
 
 **文件**: [`AuthController.java`](file:///d:/789/backend/src/main/java/com/labcourse/controller/AuthController.java)
@@ -309,8 +353,6 @@ public class LabCourseApplication {
 |------|------|------|
 | `/api/admin/login` | POST | 管理员登录，返回用户信息和 Token |
 
-**登录逻辑**: 参数校验(用户名/密码非空) → LoginAttemptService 检查是否锁定 → 密码匹配 → 生成 JWT Token → 重置失败计数
-
 #### StudentController
 
 **文件**: [`StudentController.java`](file:///d:/789/backend/src/main/java/com/labcourse/controller/StudentController.java)
@@ -319,8 +361,8 @@ public class LabCourseApplication {
 |------|------|------|------|
 | `/api/student/login` | POST | 匿名 | 学生登录 |
 | `/api/student/list` | GET | admin | 查询所有学生 |
-| `/api/student/save` | POST | admin | 新增学生 |
-| `/api/student/update` | PUT | admin | 更新学生信息 |
+| `/api/student/save` | POST | admin | 新增学生（含 `@Valid` 校验 collegeId/majorId） |
+| `/api/student/update` | PUT | admin | 更新学生信息（支持 partial update） |
 | `/api/student/{id}` | DELETE | admin | 删除学生 |
 
 #### TeacherController
@@ -343,7 +385,7 @@ public class LabCourseApplication {
 |------|------|------|------|
 | `/api/course/list` | GET | 公开 | 查询所有课程（含教师、实验室、选课人数） |
 | `/api/course/list/simple` | GET | 公开 | 简化课程列表 |
-| `/api/course/save` | POST | admin | 新增课程 |
+| `/api/course/save` | POST | admin | 新增课程（支持 courseType、collegeId） |
 | `/api/course/update` | PUT | admin | 更新课程 |
 | `/api/course/{id}` | DELETE | admin | 删除课程 |
 
@@ -392,6 +434,37 @@ public class LabCourseApplication {
 | `/api/attendance/export` | GET | teacher | 导出考勤数据 |
 | `/api/attendance/server-time` | GET | student | 获取服务器当前时间 |
 
+#### CollegeController (v2.0 新增)
+
+**文件**: [`CollegeController.java`](file:///d:/789/backend/src/main/java/com/labcourse/controller/CollegeController.java)
+
+`@PreAuthorize("hasRole('admin')")` — 仅管理员可操作。
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/college/list` | GET | 查询学院列表（支持按名称搜索、状态筛选、分页排序） |
+| `/api/college/add` | POST | 新增学院（`@Valid` 校验名称唯一性） |
+| `/api/college/update` | PUT | 更新学院（名称/状态 partial update） |
+| `/api/college/delete/{id}` | DELETE | 删除学院（软删除：ACTIVE → INACTIVE） |
+
+**删除保护**: 软删除前检查该学院下是否有关联的专业、学生或教师，如有关联则拒绝删除并提示详细数量。
+
+#### MajorController (v2.0 新增)
+
+**文件**: [`MajorController.java`](file:///d:/789/backend/src/main/java/com/labcourse/controller/MajorController.java)
+
+`@PreAuthorize("hasRole('admin')")` — 仅管理员可操作。
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/major/list` | GET | 查询专业列表（支持按名称、学院ID、状态筛选、分页排序） |
+| `/api/major/list/by-college/{collegeId}` | GET | 按学院ID查询该学院下所有启用的专业（级联下拉数据源） |
+| `/api/major/add` | POST | 新增专业（`@Valid` 校验，同学院下名称唯一） |
+| `/api/major/update` | PUT | 更新专业（名称/collegeId/状态 partial update） |
+| `/api/major/delete/{id}` | DELETE | 删除专业（软删除：ACTIVE → INACTIVE） |
+
+**删除保护**: 软删除前检查该专业下是否有关联的学生，如有关联则拒绝删除。
+
 ---
 
 ### 4.5 服务层 (service)
@@ -408,7 +481,10 @@ public class LabCourseApplication {
 | `SelectionService.java` | `SelectionServiceImpl.java` | 选课/退课业务逻辑 |
 | `ScoreService.java` | `ScoreServiceImpl.java` | 成绩录入/更新 |
 | `AttendanceService.java` | `AttendanceServiceImpl.java` | 考勤签到核心逻辑 |
+| `CollegeService.java` | `CollegeServiceImpl.java` | **v2.0 新增**: 学院层级管理 |
+| `MajorService.java` | `MajorServiceImpl.java` | **v2.0 新增**: 专业层级管理 |
 | `LoginAttemptService.java` | — | 登录失败限制服务 |
+| `MajorRequiredCourseService.java` | — | **v2.0 新增**: 专业-必修课关联服务 |
 
 #### AttendanceServiceImpl — 核心签到逻辑详解
 
@@ -453,6 +529,37 @@ public class LabCourseApplication {
 
 **状态修改规则**: 仅允许将"缺勤"修改为"请假"，其他转换一律拒绝。修改时记录 `modifiedBy`、`modifyTime`、`modifyReason`。
 
+#### CollegeServiceImpl (v2.0 新增)
+
+**文件**: [`CollegeServiceImpl.java`](file:///d:/789/backend/src/main/java/com/labcourse/service/impl/CollegeServiceImpl.java)
+
+| 方法 | 说明 |
+|------|------|
+| `list(name, status, page, size, sortBy, sortDir)` | 分页+筛选+排序查询学院。返回 Spring Data `Page` 格式 (`content`/`totalElements`) |
+| `getById(Long id)` | 按 ID 查询单个学院 |
+| `save(College college)` | 新增学院，检查名称唯一性 |
+| `update(College college)` | Partial update：仅更新传入的非空字段（name/status），检查重名 |
+| `delete(Long id)` | 软删除：检查关联实体数量（major/student/teacher），有关联则拒绝 |
+
+**关键保护逻辑**:
+- 删除前跨表统计关联数量（`majorRepository.countByCollegeId` / `studentRepository.countByCollegeId` / `teacherRepository.countByCollegeId`）
+- 有关联数据时返回 `success: false` 并提示具体数量，不执行删除
+- 无关联时设置 `status = INACTIVE` 实现软删除
+- 操作记录到 SLF4J 日志
+
+#### MajorServiceImpl (v2.0 新增)
+
+**文件**: [`MajorServiceImpl.java`](file:///d:/789/backend/src/main/java/com/labcourse/service/impl/MajorServiceImpl.java)
+
+| 方法 | 说明 |
+|------|------|
+| `list(name, collegeId, status, page, size, sortBy, sortDir)` | 多条件分页查询专业，支持按学院ID+状态联合筛选时的内存过滤 |
+| `listByCollegeId(Long collegeId)` | 按学院ID查询所有启用专业（前端级联下拉数据源） |
+| `getById(Long id)` | 按ID查询单个专业 |
+| `save(Major major)` | 新增专业，检查同学院下名称唯一性 |
+| `update(Major major)` | Partial update：仅更新传入的非空字段（name/collegeId/status） |
+| `delete(Long id)` | 软删除：检查关联学生数量，有关联则拒绝 |
+
 #### LoginAttemptService
 
 **文件**: [`LoginAttemptService.java`](file:///d:/789/backend/src/main/java/com/labcourse/service/LoginAttemptService.java)
@@ -473,46 +580,62 @@ public class LabCourseApplication {
 | `resetAttempts(String key)` | 登录成功后重置计数 |
 | `getRemainingAttempts(String key)` | 获取剩余尝试次数 |
 
-**内部类 `LoginAttempt`**: 记录失败次数、首次失败时间、锁定截止时间，提供锁定期和窗口期的计算逻辑。
-
-**内部类 `LoginResult`**: 结果封装，包含 `allowed`、`locked`、`remainingLockMinutes`、`remainingAttempts` 字段。
-
 ---
 
 ### 4.6 数据访问层 (repository)
 
-全部使用 Spring Data JPA 的 `JpaRepository` 接口，共 8 个：
+全部使用 Spring Data JPA 的 `JpaRepository` 接口，共 **12 个** (v2.0 新增 4 个)：
 
 | Repository | 对应的实体 | 关键自定义查询方法 |
 |------------|-----------|-------------------|
 | `AdminRepository` | Admin | `findByUsername(String username)` |
-| `StudentRepository` | Student | `findByStudentNo(String studentNo)` |
-| `TeacherRepository` | Teacher | `findByTeacherNo(String teacherNo)` |
-| `CourseRepository` | Course | `findByTeacherId(Long teacherId)` |
+| `StudentRepository` | Student | `findByStudentNo(String)`, `countByCollegeId(Long)`, `countByMajorId(Long)` |
+| `TeacherRepository` | Teacher | `findByTeacherNo(String)`, `countByCollegeId(Long)` |
+| `CourseRepository` | Course | `findByTeacherId(Long)`, `findByCollegeId(Long)` |
 | `LabRepository` | Lab | 无自定义方法 |
 | `SelectionRepository` | Selection | `findByStudentId()`, `findByCourseId()`, `findByStudentIdAndCourseId()`, `countByCourseId()` |
 | `ScoreRepository` | Score | `findByStudentIdAndCourseId()` |
 | `AttendanceRepository` | Attendance | `findByStudentIdAndCourseIdAndAttendanceDate()`, `findByStudentIdAndCourseIdAndAttendanceDateForUpdate()`, `findByCourseIdAndAttendanceDate()`, `findByStudentIdOrderByAttendanceDateDesc()`, `findByCourseIdOrderByAttendanceDateDesc()` |
+| `CollegeRepository` | College | `findByName(String)`, `findByNameContaining(String, Pageable)`, `findByStatus(String, Pageable)`, `findByNameContainingAndStatus(String, String, Pageable)` |
+| `MajorRepository` | Major | `findByCollegeId(Long, Pageable)`, `findByCollegeIdAndName(Long, String)`, `findByCollegeIdAndStatus(Long, String)`, `findByNameContaining(String, Pageable)`, `findByNameContainingAndCollegeId(String, Long, Pageable)`, `countByCollegeId(Long)` |
+| `MajorRequiredCourseRepository` | MajorRequiredCourse | **v2.0 新增** — 专业-必修课关联查询 |
+| `CourseTeacherRepository` | CourseTeacher | **v2.0 新增** — 课程-教师关联查询 |
 
 ---
 
 ### 4.7 实体层 (entity)
 
-| 实体类 | 对应表 | 核心字段 |
-|--------|--------|----------|
-| `Admin` | admin | id, username, password |
-| `Student` | student | id, studentNo, name, gender, major, college, password, refreshToken |
-| `Teacher` | teacher | id, teacherNo, name, title, college, password, refreshToken |
-| `Course` | course | id, courseName, teacherId, labId, courseTime, maxCount, college |
-| `Lab` | lab | id, labName, location, capacity, college |
-| `Selection` | selection | id, studentId, courseId, selectTime |
-| `Score` | score | id, studentId, courseId, score |
-| `Attendance` | attendance | id, studentId, courseId, attendanceStatus, attendanceDate, modifiedBy, modifyTime, modifyReason |
-| `AttendanceStatus` | — (枚举) | 出勤, 请假, 缺勤, 迟到 |
+共 **13 个实体类** (v2.0 新增 4 个)：
 
-**学院字段 (college)**: Student、Teacher、Course、Lab 四个实体均包含 `college` 字段（VARCHAR(100)），使用 `@Size(max=100)` 进行长度校验。前端管理员页面通过下拉选择器（10 个预设学院）输入。
+| 实体类 | 对应表 | 核心字段 | v2.0 变更 |
+|--------|--------|----------|-----------|
+| `Admin` | admin | id, username, password, createdAt, updatedAt | 不变 |
+| `College` | college | id, name, status, createdAt, updatedAt | **新增** |
+| `Major` | major | id, name, collegeId, status, createdAt, updatedAt | **新增** |
+| `Student` | student | id, studentNo, name, gender, major, college, **collegeId, majorId**, password, refreshToken, createdAt, updatedAt | 新增 collegeId/majorId 外键字段 |
+| `Teacher` | teacher | id, teacherNo, name, title, college, **collegeId**, password, refreshToken, createdAt, updatedAt | 新增 collegeId 外键字段 |
+| `Course` | course | id, courseName, teacherId, labId, courseTime, maxCount, college, **collegeId, courseType**, createdAt, updatedAt | 新增 collegeId + courseType 字段 |
+| `Lab` | lab | id, labName, location, capacity, college, **collegeId**, createdAt, updatedAt | 新增 collegeId 外键字段 |
+| `Selection` | selection | id, studentId, courseId, selectTime, createdAt, updatedAt | 不变 |
+| `Score` | score | id, studentId, courseId, score, createdAt, updatedAt | 不变 |
+| `Attendance` | attendance | id, studentId, courseId, attendanceStatus, attendanceDate, modifiedBy, modifyTime, modifyReason, createdAt, updatedAt | 不变 |
+| `AttendanceStatus` | — (枚举) | 出勤, 请假, 缺勤, 迟到 | 不变 |
+| `MajorRequiredCourse` | major_required_course | id, majorId, courseId, createdAt | **新增** |
+| `CourseTeacher` | course_teacher | id, courseId, teacherId, createdAt | **新增** |
 
-**Refresh Token**: Student 和 Teacher 实体包含 `refreshToken` 字段（VARCHAR(512)），用于 Token 轮转机制，存储在后端数据库中。
+**过渡字段淘汰计划**: Student、Teacher、Course、Lab 四个实体同时保留字符串 `college` 字段和 `collegeId`/`majorId` 外键字段，实现平滑过渡。
+
+| 版本 | 策略 | 说明 |
+|------|------|------|
+| v2.0 | college 字符串 + college_id 外键并存 | 过渡期，业务代码优先使用 college_id 外键 |
+| v2.1 | 全面使用 college_id 外键，college 字符串标记 @deprecated | 所有查询和表单已切换到外键，旧字段保留用于数据对照 |
+| v2.2 | 删除 college 字符串字段 | 执行 `migrate_v1_to_v2.sql` 中第 3 步的数据迁移 UPDATE 语句，确认所有 college_id 非 NULL 后，删除 student.college、teacher.college、course.college、lab.college 四个冗余字段 |
+
+**迁移路径**: 执行 `database/migrate_v1_to_v2.sql` 将现有 varchar 字段值通过 `LEFT JOIN college ON college = name` 迁移到外键列，确认数据一致性后删除旧字段。
+
+**@Size 校验**: Student.college、Teacher.college、Course.college、Lab.college 均使用 `@Size(max=100)`；College.name 和 Major.name 使用 `@NotBlank + @Size(max=100)`；College.status 和 Major.status 使用 `@NotNull + @Size(max=20)`。
+
+**Refresh Token**: Student 和 Teacher 实体包含 `refreshToken` 字段（VARCHAR(512)），用于 Token 轮转机制。
 
 所有实体类都使用 `@PrePersist` / `@PreUpdate` 自动管理 `createdAt` / `updatedAt` 时间戳。
 
@@ -527,11 +650,10 @@ public class LabCourseApplication {
 ```java
 public class AccountLockedException extends RuntimeException {
     private final long remainingMinutes;
-    // 构造函数 + getter
 }
 ```
 
-由 `LoginAttemptService` 抛出，在 `GlobalExceptionHandler` 中捕获，返回 HTTP 423 锁定的标准化响应。
+由 `LoginAttemptService` 抛出，在 `GlobalExceptionHandler` 中捕获，返回 HTTP 423。
 
 ---
 
@@ -583,8 +705,8 @@ BFF (Backend For Frontend) 层是基于 **Fastify 4.x** 构建的 Node.js 中间
 
 核心函数 `buildApp()` 构建 Fastify 应用：
 
-1. 注册安全插件：`@fastify/helmet` (CSP + X-Frame-Options)、`@fastify/rate-limit` (100次/分钟/IP)
-2. 注册基础插件：`@fastify/cors`、`@fastify/cookie`、`@fastify/formbody` (1MB限制)
+1. 注册安全插件：`@fastify/helmet` (CSP + X-Frame-Options: DENY)、`@fastify/rate-limit` (100次/分钟/IP)
+2. 注册基础插件：`@fastify/cors` (localhost:3000, credentials=true, 显式 allowedHeaders)、`@fastify/cookie`、`@fastify/formbody` (1MB限制)
 3. 注册请求日志钩子
 4. 设置认证路由 (`/api/student/login`, `/api/teacher/login`, `/api/admin/login`, `/api/auth/refresh`, `/api/auth/logout`)
 5. 注册透明代理插件 (处理其他所有 `/api/*` 请求)
@@ -687,10 +809,10 @@ public: [                           // 不需要 JWT
 ]
 
 authenticated: [                    // 需要 JWT
-  '/api/auth/refresh', '/api/auth/validate',
-  '/api/selection/', '/api/attendance/',
-  '/api/student/', '/api/teacher/',
-  '/api/admin/', '/api/score/', '/api/course/', '/api/lab/'
+  '/api/admin/', '/api/attendance/', '/api/auth/refresh', '/api/auth/validate',
+  '/api/college/', '/api/course/', '/api/course-teacher/',
+  '/api/lab/', '/api/major/', '/api/major-required-course/',
+  '/api/score/', '/api/selection/', '/api/student/', '/api/teacher/'
 ]
 ```
 
@@ -705,7 +827,7 @@ authenticated: [                    // 需要 JWT
 1. **preHandler**: 根据 proxyMapping 决定是否需要 `jwtVerify`
 2. **handler**: 转发请求到后端 (`config.backendUrl`)，透传请求头/请求体/状态码/响应头
 3. **安全处理**: 清理客户端传入的 `X-Forwarded-*` 头（防 IP 欺骗），设置正确的代理头
-4. **特殊处理**: 识别二进制响应（Excel 导出等），使用 `arrayBuffer` 处理
+4. **特殊处理**: 识别二进制响应（Excel 导出等），使用 `arrayBuffer` 处理；对非 JSON 响应检查 `contentType` 后再解析
 
 ---
 
@@ -764,6 +886,7 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 | 代理目标 (BFF) | `http://localhost:4000` | BFF 模式默认 |
 | 代理目标 (直连) | `http://localhost:8080` | 降级模式 |
 | 路径别名 `@` | `src/` | 模块导入快捷方式 |
+| 测试环境 | jsdom | Vitest 配置 |
 
 环境变量 `VITE_BFF_ENABLED` 控制代理目标。
 
@@ -777,21 +900,27 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 
 ### 6.2 API 封装层 (api)
 
-每个 API 模块对应一个后端 Controller，共 9 个文件：
+每个 API 模块对应一个后端 Controller，共 **12 个文件** (v2.0 新增 3 个)：
 
-| API 模块 | 文件 | 对应后端 Controller |
-|----------|------|---------------------|
-| auth | [`auth.js`](file:///d:/789/frontend/src/api/auth.js) | AuthController |
-| admin | [`admin.js`](file:///d:/789/frontend/src/api/admin.js) | AdminController |
-| student | [`student.js`](file:///d:/789/frontend/src/api/student.js) | StudentController |
-| teacher | [`teacher.js`](file:///d:/789/frontend/src/api/teacher.js) | TeacherController |
-| course | [`course.js`](file:///d:/789/frontend/src/api/course.js) | CourseController |
-| lab | [`lab.js`](file:///d:/789/frontend/src/api/lab.js) | LabController |
-| selection | [`selection.js`](file:///d:/789/frontend/src/api/selection.js) | SelectionController |
-| score | [`score.js`](file:///d:/789/frontend/src/api/score.js) | ScoreController |
-| attendance | [`attendance.js`](file:///d:/789/frontend/src/api/attendance.js) | AttendanceController |
+| API 模块 | 文件 | 对应后端 Controller | v2.0 |
+|----------|------|---------------------|------|
+| auth | [`auth.js`](file:///d:/789/frontend/src/api/auth.js) | AuthController | — |
+| admin | [`admin.js`](file:///d:/789/frontend/src/api/admin.js) | AdminController | — |
+| student | [`student.js`](file:///d:/789/frontend/src/api/student.js) | StudentController | — |
+| teacher | [`teacher.js`](file:///d:/789/frontend/src/api/teacher.js) | TeacherController | — |
+| course | [`course.js`](file:///d:/789/frontend/src/api/course.js) | CourseController | — |
+| lab | [`lab.js`](file:///d:/789/frontend/src/api/lab.js) | LabController | — |
+| selection | [`selection.js`](file:///d:/789/frontend/src/api/selection.js) | SelectionController | — |
+| score | [`score.js`](file:///d:/789/frontend/src/api/score.js) | ScoreController | — |
+| attendance | [`attendance.js`](file:///d:/789/frontend/src/api/attendance.js) | AttendanceController | — |
+| college | [`college.js`](file:///d:/789/frontend/src/api/college.js) | CollegeController | **新增** |
+| major | [`major.js`](file:///d:/789/frontend/src/api/major.js) | MajorController | **新增** |
 
 所有 API 模块统一通过 `axios` 实例 (来自 `utils/request.js`) 发起请求。
+
+**college.js**: 封装 `getCollegeList(params)` / `addCollege(data)` / `updateCollege(data)` / `deleteCollege(id)` 四个方法。
+
+**major.js**: 封装 `getMajorList(params)` / `getMajorsByCollegeId(collegeId)` / `addMajor(data)` / `updateMajor(data)` / `deleteMajor(id)` 五个方法。`getMajorsByCollegeId` 用于级联下拉选择器。
 
 ---
 
@@ -801,12 +930,12 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 
 #### 路由表
 
-| 路径 | 组件 | 角色 |
-|------|------|------|
-| `/login` | Login.vue | 公开 |
-| `/student/*` | StudentLayout.vue | student |
-| `/teacher/*` | TeacherLayout.vue | teacher |
-| `/admin/*` | AdminLayout.vue | admin |
+| 路径 | 组件 | 角色 | v2.0 |
+|------|------|------|------|
+| `/login` | Login.vue | 公开 | — |
+| `/student/*` | StudentLayout.vue | student | — |
+| `/teacher/*` | TeacherLayout.vue | teacher | — |
+| `/admin/*` | AdminLayout.vue | admin | — |
 
 #### 导航守卫
 
@@ -818,21 +947,22 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 
 #### 嵌套路由
 
-| 父路由 | 子路径 | 子组件 |
-|--------|--------|--------|
-| `/student` | `course` | StudentCourse.vue |
-| `/student` | `my-course` | StudentMyCourse.vue |
-| `/student` | `schedule` | StudentSchedule.vue |
-| `/student` | `attendance` | StudentAttendance.vue |
-| `/student` | `attendance-history` | StudentAttendanceHistory.vue |
-| `/teacher` | `course` | TeacherCourse.vue |
-| `/teacher` | `students/:courseId` | TeacherStudentList.vue |
-| `/teacher` | `attendance` | TeacherAttendance.vue |
-| `/teacher` | `score` | TeacherScore.vue |
-| `/admin` | `students` | AdminStudent.vue |
-| `/admin` | `teachers` | AdminTeacher.vue |
-| `/admin` | `courses` | AdminCourse.vue |
-| `/admin` | `labs` | AdminLab.vue |
+| 父路由 | 子路径 | 子组件 | v2.0 |
+|--------|--------|--------|------|
+| `/student` | `course` | StudentCourse.vue | — |
+| `/student` | `my-course` | StudentMyCourse.vue | — |
+| `/student` | `schedule` | StudentSchedule.vue | — |
+| `/student` | `attendance` | StudentAttendance.vue | — |
+| `/student` | `attendance-history` | StudentAttendanceHistory.vue | — |
+| `/teacher` | `course` | TeacherCourse.vue | — |
+| `/teacher` | `students/:courseId` | TeacherStudentList.vue | — |
+| `/teacher` | `attendance` | TeacherAttendance.vue | — |
+| `/teacher` | `score` | TeacherScore.vue | — |
+| `/admin` | `students` | AdminStudent.vue | — |
+| `/admin` | `teachers` | AdminTeacher.vue | — |
+| `/admin` | `courses` | AdminCourse.vue | — |
+| `/admin` | `labs` | AdminLab.vue | — |
+| `/admin` | `college-major` | AdminCollegeMajor.vue | **新增** |
 
 ---
 
@@ -850,6 +980,7 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 | 请求拦截器 | 附加 Authorization 头 (降级模式), Token 快过期时自动刷新 |
 | 响应拦截器 | 统一错误处理: 401→重新登录, 403→权限不足, 423→账号锁定 |
 | 请求队列 | Token 刷新期间挂起的请求排队，刷新完成后统一重发 |
+| 分页适配 | 适配 Spring Data 分页格式 (`content`/`totalElements`)，页面号 1-based→0-based 转换 |
 
 #### tokenManager.js — Token 生命周期管理
 
@@ -913,7 +1044,7 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 
 角色选择（学生/教师/管理员）→ 表单输入 → 表单验证 → 登录请求 → 存储用户信息 → 跳转角色首页。
 
-**BFF 模式存储策略**: 登录成功后仅存储 `{ _bffMode: true, token: 'bff-cookie', id: result.data?.id }`，不存储敏感身份信息（如角色、token 等），由后端 API 授权和 BFF Cookie 管理。这确保了前端不持有真实 Token，且考勤等 API 调用可通过 `id` 字段正常获取 studentId。
+**BFF 模式存储策略**: 登录成功后仅存储 `{ _bffMode: true, token: 'bff-cookie', id: result.data?.id }`，不存储敏感身份信息（如角色、token 等），由后端 API 授权和 BFF Cookie 管理。
 
 #### 布局组件
 
@@ -921,7 +1052,7 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 |------|------|-----------|
 | `StudentLayout.vue` | 学生 | 课程列表, 我的课程, 我的课表, 考勤签到, 签到记录 |
 | `TeacherLayout.vue` | 教师 | 我的课程, 考勤管理, 成绩管理 |
-| `AdminLayout.vue` | 管理员 | 学生管理, 教师管理, 课程管理, 实验室管理 |
+| `AdminLayout.vue` | 管理员 | 学生管理, 教师管理, 课程管理, 实验室管理, 学院专业管理 |
 
 #### 学生端视图 (6 个)
 
@@ -942,14 +1073,54 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 | `TeacherAttendance.vue` | 按日期查看考勤、缺勤→请假修改 |
 | `TeacherScore.vue` | 录入/修改成绩、成绩导出 |
 
-#### 管理员端视图 (5 个)
+#### 管理员端视图 (6 个，v2.0 新增 1 个)
 
-| 组件 | 功能 |
-|------|------|
-| `AdminStudent.vue` | 学生增删改查、密码强度校验 |
-| `AdminTeacher.vue` | 教师增删改查 |
-| `AdminCourse.vue` | 课程增删改查、关联教师和实验室 |
-| `AdminLab.vue` | 实验室增删改查 |
+| 组件 | 功能 | v2.0 |
+|------|------|------|
+| `AdminStudent.vue` | 学生增删改查、密码强度校验、学院/专业下拉选择 | — |
+| `AdminTeacher.vue` | 教师增删改查、学院下拉选择 | — |
+| `AdminCourse.vue` | 课程增删改查、关联教师和实验室、课程类型选择 | — |
+| `AdminLab.vue` | 实验室增删改查 | — |
+| `AdminCollegeMajor.vue` | **学院管理**：名称搜索、状态筛选、分页、增删改；**专业管理**：名称/学院/状态多维筛选、级联下拉、增删改 | **新增** |
+
+**AdminCollegeMajor.vue 关键特性**:
+- 双 Tab 切换（学院管理 / 专业管理）
+- 学院→专业级联下拉选择器（`el-select` + `filterable` + 异步加载）
+- `getCollegeName(collegeId)` 方法查找学院名称显示在专业列表
+- 删除保护：弹窗确认 + 后端验证关联数据
+- 状态标签可视化（启用=绿色 / 停用=灰色）
+
+---
+
+### 6.6 E2E 端到端测试
+
+项目使用 **Playwright 1.60.0** 进行端到端测试，共 **13 个测试用例** 覆盖以下场景：
+
+| 测试分类 | 文件 | 用例数 | 覆盖内容 |
+|----------|------|--------|---------|
+| 认证 | `tests/e2e/auth/routing.spec.js` | 1 | 路由导航守卫验证 |
+| 学院 CRUD | `tests/e2e/college/crud.spec.js` | 1 | 学院增删改查流程 |
+| 学院删除保护 | `tests/e2e/college/delete-associated.spec.js` | 1 | 有关联数据时拒绝删除 |
+| 专业 CRUD | `tests/e2e/major/crud.spec.js` | 1 | 专业增删改查流程 |
+| 级联下拉 | `tests/e2e/dialog/student-cascade.spec.js` | 1 | 学生表单学院→专业级联 |
+| 级联下拉 | `tests/e2e/dialog/teacher-cascade.spec.js` | 1 | 教师表单学院级联 |
+| 级联下拉 | `tests/e2e/dialog/course-cascade.spec.js` | 1 | 课程表单学院级联 |
+| 空状态 UI | `tests/e2e/ui/empty-state.spec.js` | 1 | 空数据状态展示 |
+| 表单提交 | `tests/e2e/ui/form-submit.spec.js` | 1 | 表单重复提交防护 |
+| 跨学院 | `tests/e2e/business/cross-college.spec.js` | 1 | 跨学院业务规则验证 |
+| 必修课 | `tests/e2e/business/required-course.spec.js` | 1 | 必修课配置与显示 |
+| 教师绑定 | `tests/e2e/business/teacher-binding.spec.js` | 1 | 课程-教师关联验证 |
+| 快速检查 | `tests/e2e/scripts/quickcheck_*.spec.ts` | 1 | 综合快速回归检查 |
+
+**运行命令**:
+
+```bash
+cd frontend
+npx playwright test                          # 运行全部 E2E 测试
+npx playwright test --headed                 # 有头模式（可视化调试）
+npx playwright test tests/e2e/college/       # 按分类运行
+npx playwright show-report playwright-report # 查看报告
+```
 
 ---
 
@@ -958,50 +1129,91 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 ### 7.1 ER 图
 
 ```
-┌──────────┐       ┌──────────┐       ┌──────────┐
-│  Student  │──1:N──│ Selection │──N:1──│  Course  │──N:1──│  Teacher  │
-│  (学生)   │       │  (选课)   │       │  (课程)   │       │  (教师)   │
-└──────────┘       └──────────┘       └──────────┘       └──────────┘
-      │                                      │
-      ├───────────1:N──┐          ┌─────────┤
-      │                │          │         │
-┌──────────┐    ┌──────────┐    │    ┌──────────┐
-│  Score   │    │Attendance│    │    │   Lab    │
-│  (成绩)   │    │  (考勤)   │    │    │ (实验室)  │
-└──────────┘    └──────────┘    │    └──────────┘
-                                │
-                        ┌──────────┐
-                        │  Admin   │
-                        │ (管理员)  │
-                        └──────────┘
+┌────────────────┐       ┌──────────┐       ┌──────────────────────┐       ┌──────────┐
+│ college_status │──N:1──│  College  │──1:N──│        Major         │──1:N──│  major_  │──N:1──┐
+│     _log       │       │  (学院)   │       │       (专业)         │       │ required │       │
+│  (状态变更日志) │       └──────────┘       └──────────────────────┘       │ _course  │       │
+└────────────────┘         │    │                    │                      └──────────┘       │
+                           │    │                    │                                        │
+                    1:N┌───┘    └──1:N┐       1:N┌──┘                              ┌────────┘
+                       ▼               ▼          ▼                                 ▼
+                 ┌──────────┐   ┌──────────┐  ┌──────────┐                   ┌──────────┐
+                 │  Student  │   │   Lab    │  │ Selection │──────────────────│  Course  │
+                 │  (学生)   │   │ (实验室)  │  │  (选课)   │     N:1          │  (课程)   │
+                 └──────────┘   └──────────┘  └──────────┘                   └──────────┘
+                       │                               │                      │         │
+              ┌────────┼────────┐                      │              ┌───────┘         │
+              ▼        ▼        ▼                      │              ▼                 ▼
+        ┌──────────┐ ┌──────────┐ ┌──────────┐        │       ┌──────────┐    ┌──────────────┐
+        │  Score   │ │Attendance│ │  Admin   │        │       │ Teacher  │    │course_teacher│
+        │  (成绩)  │ │ (考勤)   │ │ (管理员) │        │       │ (教师)   │    │(课程-教师关联)│
+        └──────────┘ └──────────┘ └──────────┘        │       └──────────┘    └──────────────┘
+                                                       │
+                                               ┌───────┘
+                                               ▼
+                                        ┌──────────┐
+                                        │  Admin   │
+                                        │ (管理员)  │
+                                        └──────────┘
 ```
 
 ### 7.2 表结构详细说明
 
-**文件**: [`init_database.sql`](file:///d:/789/database/init_database.sql)
+**文件**: [`init_database.sql`](file:///d:/789/database/init_database.sql) (v2.1 — 13 张表 + 1 张日志表 + 存量迁移脚本)
+
+#### college (学院表) — v2.0 新增
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT PK AUTO_INCREMENT | 主键 | 自增ID |
+| name | VARCHAR(100) UNIQUE | 非空唯一 | 学院名称 |
+| status | ENUM('ACTIVE','INACTIVE') | 默认 ACTIVE | 状态 |
+| created_at | TIMESTAMP | 默认当前时间 | 创建时间 |
+| updated_at | TIMESTAMP | 自动更新 | 更新时间 |
+
+#### major (专业表) — v2.0 新增
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT PK AUTO_INCREMENT | 主键 | 自增ID |
+| name | VARCHAR(100) | 非空 | 专业名称 |
+| college_id | BIGINT FK→college(id) | 非空, ON DELETE RESTRICT ON UPDATE RESTRICT | 所属学院 |
+| status | ENUM('ACTIVE','INACTIVE') | 默认 ACTIVE | 状态 |
+| created_at | TIMESTAMP | 默认当前时间 | 创建时间 |
+| updated_at | TIMESTAMP | 自动更新 | 更新时间 |
+| UNIQUE KEY | (college_id, name) | 联合唯一 | 同学院下专业名唯一 |
 
 #### student (学生表)
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | BIGINT PK AUTO_INCREMENT | 主键 | 自增ID |
-| student_no | VARCHAR(20) UNIQUE | 非空唯一 | 学号 |
-| name | VARCHAR(50) | 非空 | 姓名 |
-| gender | VARCHAR(10) | — | 性别 |
-| major | VARCHAR(100) | — | 专业 |
-| college | VARCHAR(100) | — | 学院 |
-| password | VARCHAR(100) | 非空 | 密码 (BCrypt) |
+| 字段 | 类型 | 约束 | 说明 | v2.0 |
+|------|------|------|------|------|
+| id | BIGINT PK AUTO_INCREMENT | 主键 | 自增ID | — |
+| student_no | VARCHAR(20) UNIQUE | 非空唯一 | 学号 | — |
+| name | VARCHAR(50) | 非空 | 姓名 | — |
+| gender | VARCHAR(10) | CHECK(gender IN ('男','女')) | 性别 | **v2.1** |
+| major | VARCHAR(100) | — | 专业（过渡字段） | — |
+| college | VARCHAR(100) | — | 学院（过渡字段） | — |
+| college_id | BIGINT FK→college(id) | ON DELETE RESTRICT ON UPDATE RESTRICT | 学院ID（新外键） | **新增** |
+| major_id | BIGINT FK→major(id) | ON DELETE RESTRICT ON UPDATE RESTRICT | 专业ID（新外键） | **新增** |
+| password | VARCHAR(100) | 非空 | 密码 (BCrypt) | — |
+| refresh_token | VARCHAR(512) | — | Refresh Token | — |
+| created_at | TIMESTAMP | 默认当前时间 | 创建时间 | — |
+| updated_at | TIMESTAMP | 自动更新 | 更新时间 | — |
 
 #### teacher (教师表)
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | BIGINT PK AUTO_INCREMENT | 主键 | 自增ID |
-| teacher_no | VARCHAR(20) UNIQUE | 非空唯一 | 工号 |
-| name | VARCHAR(50) | 非空 | 姓名 |
-| title | VARCHAR(50) | — | 职称 |
-| college | VARCHAR(100) | — | 学院 |
-| password | VARCHAR(100) | 非空 | 密码 (BCrypt) |
+| 字段 | 类型 | 约束 | 说明 | v2.0 |
+|------|------|------|------|------|
+| id | BIGINT PK AUTO_INCREMENT | 主键 | 自增ID | — |
+| teacher_no | VARCHAR(20) UNIQUE | 非空唯一 | 工号 | — |
+| name | VARCHAR(50) | 非空 | 姓名 | — |
+| title | VARCHAR(50) | — | 职称 | — |
+| college | VARCHAR(100) | — | 学院（过渡字段） | — |
+| college_id | BIGINT FK→college(id) | ON DELETE RESTRICT ON UPDATE RESTRICT | 学院ID（新外键） | **新增** |
+| password | VARCHAR(100) | 非空 | 密码 (BCrypt) | — |
+| refresh_token | VARCHAR(512) | — | Refresh Token | — |
+| created_at | TIMESTAMP | 默认当前时间 | 创建时间 | — |
+| updated_at | TIMESTAMP | 自动更新 | 更新时间 | — |
 
 #### admin (管理员表)
 
@@ -1010,28 +1222,37 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 | id | BIGINT PK AUTO_INCREMENT | 主键 | 自增ID |
 | username | VARCHAR(50) UNIQUE | 非空唯一 | 用户名 |
 | password | VARCHAR(100) | 非空 | 密码 (BCrypt) |
+| created_at | TIMESTAMP | 默认当前时间 | 创建时间 |
+| updated_at | TIMESTAMP | 自动更新 | 更新时间 |
 
 #### lab (实验室表)
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | BIGINT PK AUTO_INCREMENT | 主键 | 自增ID |
-| lab_name | VARCHAR(100) | 非空 | 实验室名称 |
-| location | VARCHAR(200) | — | 地点 |
-| capacity | INT | — | 容量 |
-| college | VARCHAR(100) | — | 学院 |
+| 字段 | 类型 | 约束 | 说明 | v2.1 |
+|------|------|------|------|------|
+| id | BIGINT PK AUTO_INCREMENT | 主键 | 自增ID | — |
+| lab_name | VARCHAR(100) | 非空 | 实验室名称 | — |
+| location | VARCHAR(200) | — | 地点 | — |
+| capacity | INT | — | 容量 | — |
+| college | VARCHAR(100) | — | 学院（过渡字段） | @deprecated |
+| college_id | BIGINT FK→college(id) | ON DELETE RESTRICT ON UPDATE RESTRICT | 学院ID（新外键） | **新增** |
+| created_at | TIMESTAMP | 默认当前时间 | 创建时间 | — |
+| updated_at | TIMESTAMP | 自动更新 | 更新时间 | — |
 
 #### course (课程表)
 
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | BIGINT PK AUTO_INCREMENT | 主键 | 自增ID |
-| course_name | VARCHAR(100) | 非空 | 课程名 |
-| teacher_id | BIGINT FK→teacher(id) | 非空 | 授课教师 |
-| lab_id | BIGINT FK→lab(id) | — | 上课实验室 |
-| course_time | VARCHAR(100) | — | 上课时间 (如 "周一 1-2节") |
-| max_count | INT | 默认30 | 最大选课人数 |
-| college | VARCHAR(100) | — | 学院 |
+| 字段 | 类型 | 约束 | 说明 | v2.0 |
+|------|------|------|------|------|
+| id | BIGINT PK AUTO_INCREMENT | 主键 | 自增ID | — |
+| course_name | VARCHAR(100) | 非空 | 课程名 | — |
+| teacher_id | BIGINT FK→teacher(id) | 非空 | 授课教师 | — |
+| lab_id | BIGINT FK→lab(id) | — | 上课实验室 | — |
+| course_time | VARCHAR(100) | — | 上课时间 (如 "周一 1-2节") | — |
+| max_count | INT | 默认30 | 最大选课人数 | — |
+| college | VARCHAR(100) | — | 学院（过渡字段） | — |
+| college_id | BIGINT FK→college(id) | ON DELETE RESTRICT ON UPDATE RESTRICT | 学院ID（新外键） | **新增** |
+| course_type | ENUM('REQUIRED','ELECTIVE') | 默认 ELECTIVE | 课程类型 | **新增** |
+| created_at | TIMESTAMP | 默认当前时间 | 创建时间 | — |
+| updated_at | TIMESTAMP | 自动更新 | 更新时间 | — |
 
 #### selection (选课表)
 
@@ -1041,6 +1262,8 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 | student_id | BIGINT FK→student(id) | 非空 | 学生ID |
 | course_id | BIGINT FK→course(id) | 非空 | 课程ID |
 | select_time | DATETIME | 默认当前时间 | 选课时间 |
+| created_at | TIMESTAMP | 默认当前时间 | 创建时间 |
+| updated_at | TIMESTAMP | 自动更新 | 更新时间 |
 | UNIQUE KEY | (student_id, course_id) | 唯一约束 | 同一学生不能重复选课 |
 
 #### score (成绩表)
@@ -1050,7 +1273,9 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 | id | BIGINT PK AUTO_INCREMENT | 主键 | 自增ID |
 | student_id | BIGINT FK→student(id) | 非空 | 学生ID |
 | course_id | BIGINT FK→course(id) | 非空 | 课程ID |
-| score | DECIMAL(5,2) | — | 成绩 |
+| score | DECIMAL(5,2) | CHECK(score>=0 AND score<=100) | 成绩 |
+| created_at | TIMESTAMP | 默认当前时间 | 创建时间 |
+| updated_at | TIMESTAMP | 自动更新 | 更新时间 |
 | UNIQUE KEY | (student_id, course_id) | 唯一约束 | 同学生同课程只有一个成绩 |
 
 #### attendance (考勤表)
@@ -1062,28 +1287,189 @@ maskSensitive(obj, keys)  // 脱敏指定字段（password, token, secret 等）
 | course_id | BIGINT FK→course(id) | 非空 | 课程ID |
 | attendance_status | ENUM('出勤','请假','缺勤','迟到') | — | 考勤状态 |
 | attendance_date | DATE | — | 考勤日期 |
+| check_in_time | TIMESTAMP | 默认当前时间 | 实际签到时间（v2.1 新增） |
 | modified_by | BIGINT | — | 修改人ID (教师) |
 | modify_time | DATETIME | — | 修改时间 |
 | modify_reason | VARCHAR(200) | — | 修改原因 |
+| created_at | TIMESTAMP | 默认当前时间 | 创建时间 |
+| updated_at | TIMESTAMP | 自动更新 | 更新时间 |
 | UNIQUE KEY | (student_id, course_id, attendance_date) | 唯一约束 | 同学生同课程同天只能签到一次 |
+
+#### major_required_course (专业-必修课关联表) — v2.0 新增
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT PK AUTO_INCREMENT | 主键 | 自增ID |
+| major_id | BIGINT FK→major(id) | 非空, ON DELETE RESTRICT ON UPDATE RESTRICT | 专业ID |
+| course_id | BIGINT FK→course(id) | 非空, ON DELETE RESTRICT ON UPDATE RESTRICT | 必修课ID |
+| created_at | TIMESTAMP | 默认当前时间 | 创建时间 |
+| UNIQUE KEY | (major_id, course_id) | 联合唯一 | 同专业同课程不重复 |
+
+#### course_teacher (课程-教师关联表) — v2.0 新增
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT PK AUTO_INCREMENT | 主键 | 自增ID |
+| course_id | BIGINT FK→course(id) | 非空, ON DELETE RESTRICT ON UPDATE RESTRICT | 课程ID |
+| teacher_id | BIGINT UNIQUE FK→teacher(id) | 非空, 教师全局唯一, ON DELETE RESTRICT ON UPDATE RESTRICT | 教师ID |
+| created_at | TIMESTAMP | 默认当前时间 | 创建时间 |
 
 #### 索引
 
 ```sql
--- 查询优化索引
-idx_course_teacher  ON course(teacher_id)
-idx_course_lab      ON course(lab_id)
+-- 原有索引
+idx_course_teacher   ON course(teacher_id)
+idx_course_lab       ON course(lab_id)
 idx_selection_student ON selection(student_id)
 idx_selection_course   ON selection(course_id)
 idx_score_student      ON score(student_id)
 idx_score_course       ON score(course_id)
 idx_attendance_student ON attendance(student_id)
 idx_attendance_course  ON attendance(course_id)
+
+-- v2.0 新增外键列索引
+idx_major_college   ON major(college_id)
+idx_student_college ON student(college_id)
+idx_student_major   ON student(major_id)
+idx_course_college  ON course(college_id)
+idx_teacher_college ON teacher(college_id)
+
+-- v2.1 新增外键列索引
+idx_lab_college       ON lab(college_id)                                -- 按学院查询实验室
+
+-- v2.1 新增联合索引
+idx_attendance_course_date ON attendance(course_id, attendance_date)  -- 教师按课程+日期查考勤
+idx_major_college_status   ON major(college_id, status)               -- 按学院+状态筛选专业
+idx_attendance_student_date ON attendance(student_id, attendance_date) -- 学生按日期查签到历史
 ```
 
-#### 种子数据
+#### 种子数据 (v2.0)
 
-初始化脚本包含：1 个管理员、3 位教师、5 名学生、5 间实验室、5 门课程。
+初始化脚本包含：1 个管理员、4 个学院、8 个专业、3 位教师、5 名学生、5 间实验室、5 门课程、5 条课程-教师关联、2 条必修课关联。
+
+#### 存量数据迁移 (v2.0)
+
+SQL 文件中注释了存量迁移脚本：通过 `LEFT JOIN college ON college = name` 将现有 varchar 字段的值迁移到外键列。全新安装无需执行。
+
+---
+
+### 7.3 数据库索引设计表
+
+| 索引名 | 表 | 字段 | 类型 | 设计理由 |
+|--------|-----|------|------|----------|
+| PRIMARY | 所有表 | id | 主键索引(B+Tree) | 主键自动创建聚簇索引 |
+| uk_college_major | major | (college_id, name) | 唯一索引 | 同学院下专业名唯一 |
+| uk_student_course | selection | (student_id, course_id) | 唯一索引 | 同学生不能重复选同一课程 |
+| uk_student_course_score | score | (student_id, course_id) | 唯一索引 | 同学生同课程只有一个成绩 |
+| uk_student_course_date | attendance | (student_id, course_id, attendance_date) | 唯一索引 | 同学生同课程同天只能签到一次 |
+| uk_major_course | major_required_course | (major_id, course_id) | 唯一索引 | 同专业同课程不重复关联 |
+| idx_course_teacher | course | (teacher_id) | 普通索引 | 按教师查询课程 |
+| idx_course_lab | course | (lab_id) | 普通索引 | 按实验室查询课程 |
+| idx_selection_student | selection | (student_id) | 普通索引 | 按学生查询选课记录 |
+| idx_selection_course | selection | (course_id) | 普通索引 | 按课程查询选课学生 |
+| idx_score_student | score | (student_id) | 普通索引 | 按学生查询成绩 |
+| idx_score_course | score | (course_id) | 普通索引 | 按课程查询成绩 |
+| idx_attendance_student | attendance | (student_id) | 普通索引 | 按学生查询考勤记录 |
+| idx_attendance_course | attendance | (course_id) | 普通索引 | 按课程查询考勤记录 |
+| idx_major_college | major | (college_id) | 普通索引 | 按学院查询专业（级联下拉） |
+| idx_student_college | student | (college_id) | 普通索引 | 按学院查询学生 |
+| idx_student_major | student | (major_id) | 普通索引 | 按专业查询学生 |
+| idx_course_college | course | (college_id) | 普通索引 | 按学院查询课程 |
+| idx_teacher_college | teacher | (college_id) | 普通索引 | 按学院查询教师 |
+| idx_lab_college | lab | (college_id) | 普通索引 | 按学院查询实验室 |
+| idx_attendance_course_date | attendance | (course_id, attendance_date) | **联合索引** | 教师按课程+日期查考勤（高频场景，利用最左前缀） |
+| idx_major_college_status | major | (college_id, status) | **联合索引** | 按学院+状态筛选启用专业 |
+| idx_attendance_student_date | attendance | (student_id, attendance_date) | **联合索引** | 学生按日期查签到历史（最左前缀） |
+
+**索引总数**: 8 个唯一索引 + 15 个普通索引(含 3 个联合索引) = 23 个索引
+
+### 7.4 外键约束明细表
+
+| 约束名 | 子表 | 子表字段 | 父表 | 父表字段 | 级联策略 | 业务含义 |
+|--------|------|----------|------|----------|----------|----------|
+| fk_major_college | major | college_id | college | id | RESTRICT / RESTRICT | 专业必须属于一个存在的学院 |
+| fk_student_college | student | college_id | college | id | RESTRICT / RESTRICT | 学生必须属于一个存在的学院 |
+| fk_student_major | student | major_id | major | id | RESTRICT / RESTRICT | 学生必须属于一个存在的专业 |
+| fk_teacher_college | teacher | college_id | college | id | RESTRICT / RESTRICT | 教师必须属于一个存在的学院 |
+| fk_course_teacher | course | teacher_id | teacher | id | RESTRICT / RESTRICT | 课程必须有授课教师 |
+| fk_course_lab | course | lab_id | lab | id | RESTRICT / RESTRICT | 课程可选关联实验室 |
+| fk_course_college | course | college_id | college | id | RESTRICT / RESTRICT | 课程必须属于一个存在的学院 |
+| fk_lab_college | lab | college_id | college | id | RESTRICT / RESTRICT | 实验室属于一个学院 |
+| fk_selection_student | selection | student_id | student | id | RESTRICT / RESTRICT | 选课记录关联存在的学生 |
+| fk_selection_course | selection | course_id | course | id | RESTRICT / RESTRICT | 选课记录关联存在的课程 |
+| fk_score_student | score | student_id | student | id | RESTRICT / RESTRICT | 成绩记录关联存在的学生 |
+| fk_score_course | score | course_id | course | id | RESTRICT / RESTRICT | 成绩记录关联存在的课程 |
+| fk_attendance_student | attendance | student_id | student | id | RESTRICT / RESTRICT | 考勤记录关联存在的学生 |
+| fk_attendance_course | attendance | course_id | course | id | RESTRICT / RESTRICT | 考勤记录关联存在的课程 |
+| fk_mrc_major | major_required_course | major_id | major | id | RESTRICT / RESTRICT | 必修课关联存在的专业 |
+| fk_mrc_course | major_required_course | course_id | course | id | RESTRICT / RESTRICT | 必修课关联存在的课程 |
+| fk_ct_course | course_teacher | course_id | course | id | RESTRICT / RESTRICT | 课程-教师关联存在的课程 |
+| fk_ct_teacher | course_teacher | teacher_id | teacher | id | RESTRICT / RESTRICT | 课程-教师关联存在的教师 |
+| fk_csl_college | college_status_log | college_id | college | id | RESTRICT / RESTRICT | 状态日志关联存在的学院 |
+
+**级联策略说明**: 全部采用 `ON DELETE RESTRICT ON UPDATE RESTRICT`
+- **ON DELETE RESTRICT**: 删除父表记录前检查子表是否有引用，有则拒绝删除，保护数据完整性
+- **ON UPDATE RESTRICT**: 主键均为自增 BIGINT，实际不会更新，RESTRICT 减少数据库开销
+
+**外键总数**: 19 个
+
+### 7.5 字段约束表
+
+| 表名 | 字段名 | 类型 | 长度 | 非空 | 默认值 | CHECK/ENUM | 注释 |
+|------|--------|------|------|------|--------|------------|------|
+| college | name | VARCHAR | 100 | NOT NULL | — | UNIQUE | 学院名称（全局唯一） |
+| college | status | ENUM | — | NOT NULL | ACTIVE | ENUM('ACTIVE','INACTIVE') | 状态 |
+| major | name | VARCHAR | 100 | NOT NULL | — | — | 专业名称 |
+| major | status | ENUM | — | NOT NULL | ACTIVE | ENUM('ACTIVE','INACTIVE') | 状态 |
+| student | student_no | VARCHAR | 20 | NOT NULL | — | UNIQUE | 学号 |
+| student | gender | VARCHAR | 10 | — | — | CHECK(gender IN ('男','女')) | 性别 |
+| student | password | VARCHAR | 100 | NOT NULL | — | — | BCrypt加密 |
+| teacher | teacher_no | VARCHAR | 20 | NOT NULL | — | UNIQUE | 工号 |
+| admin | username | VARCHAR | 50 | NOT NULL | — | UNIQUE | 用户名 |
+| course | course_time | VARCHAR | 100 | — | — | — | 上课时间(如"周一 1-2节") |
+| course | max_count | INT | — | — | 30 | — | 最大选课人数 |
+| course | course_type | ENUM | — | NOT NULL | ELECTIVE | ENUM('REQUIRED','ELECTIVE') | 课程类型 |
+| selection | select_time | TIMESTAMP | — | NOT NULL | CURRENT_TIMESTAMP | — | 选课时间 |
+| score | score | DECIMAL | 5,2 | — | — | CHECK(score>=0 AND score<=100) | 成绩（0-100） |
+| attendance | attendance_status | ENUM | — | — | — | ENUM('出勤','请假','缺勤','迟到') | 考勤状态 |
+| attendance | attendance_date | DATE | — | — | — | — | 考勤日期 |
+| attendance | check_in_time | TIMESTAMP | — | NOT NULL | CURRENT_TIMESTAMP | — | 实际签到时间 |
+| attendance | modify_reason | VARCHAR | 200 | — | — | — | 修改原因 |
+
+### 7.6 数据库编程对象
+
+#### 存储过程
+
+| 存储过程 | 功能 | 参数 | 事务 | 锁 |
+|----------|------|------|------|-----|
+| `proc_check_attendance_status` | 签到状态判定 | IN: student_id, course_id, check_time; OUT: status, message | — | — |
+| `proc_check_course_selection_conflict` | 选课冲突检查与插入 | IN: student_id, course_id; OUT: result_code, result_msg | START TRANSACTION + COMMIT/ROLLBACK | SELECT ... FOR UPDATE (悲观锁) |
+| `check_course_selection` | 检查学生是否已选某课程 | IN: student_id, course_id | — | — |
+| `get_student_selection_stats` | 获取学生选课统计 | IN: student_id | — | — |
+| `get_course_selection_stats` | 获取课程选课统计 | IN: course_id | — | — |
+
+**proc_check_course_selection_conflict 执行流程**：
+1. `START TRANSACTION` 开启事务
+2. `SELECT max_count FROM course WHERE id=? FOR UPDATE` 悲观锁锁定课程行
+3. 检查是否已选（重复选课检查）
+4. 检查 `COUNT(*) >= max_count` 是否超限
+5. 通过则 `INSERT INTO selection`，否则 `ROLLBACK`
+
+#### 视图
+
+| 视图名 | 功能 | 涉及表 | 用途 |
+|--------|------|--------|------|
+| `v_active_college` | 仅返回 ACTIVE 状态的学院 | college | 替代业务代码中的 status 过滤，简化查询 |
+| `v_active_major` | 仅返回 ACTIVE 状态的专业 | major | 替代业务代码中的 status 过滤 |
+| `v_student_course` | 学生-课程-专业-学院全关联视图 | student + major + college + selection + course + teacher | 简化前端多表 JOIN 查询 |
+
+#### 触发器
+
+| 触发器 | 触发时机 | 功能 |
+|--------|----------|------|
+| `trigger_college_status_update` | AFTER UPDATE ON college | 当学院状态从 ACTIVE 变更为 INACTIVE 时，自动插入 `college_status_log` 日志表 |
+
+**college_status_log 表**：记录学院状态变更历史，包含 college_id、old_status、new_status、changed_at 四个字段。
 
 ---
 
@@ -1112,7 +1498,7 @@ idx_attendance_course  ON attendance(course_id)
   → Cookie提取Token (优先bff_access_token) → jwt.verify() → 附加Authorization头
   → 清理客户端X-Forwarded-*头 → 设置正确代理头
   → 后端: JwtFilter提取Token → 设置SecurityContext
-  → SecurityConfig: 路由级RBAC鉴权
+  → SecurityConfig + @PreAuthorize: 路由级RBAC + 方法级权限
 ```
 
 ### 8.3 Token 刷新 (轮转)
@@ -1131,8 +1517,8 @@ Access Token 即将过期:
 |------|----------|
 | 密码存储 | BCrypt 不可逆哈希 |
 | 密码迁移 | `PasswordMigration` 自动升级明文密码 |
-| 登录锁定 | `LoginAttemptService` 内存计数 |
-| JWT 签名 | HS256/HS384/HS512 + 密钥 |
+| 登录锁定 | `LoginAttemptService` 内存计数 (5次/15分钟 → 锁定30分钟) |
+| JWT 签名 | HS256/HS384/HS512 + 密钥 (环境变量) |
 | Token 有效期 | Access 30分钟 / Refresh 7天 |
 | Token 存储 | HttpOnly Cookie (BFF模式) / localStorage (降级) |
 | Token 轮转 | Refresh Token 使用后立即失效，颁发新 Token 对 |
@@ -1142,9 +1528,12 @@ Access Token 即将过期:
 | 速率限制 | 全局 100次/分钟/IP (BFF) |
 | 请求体限制 | 1MB (BFF formbody) |
 | X-Forwarded 清理 | 防止 IP 欺骗攻击 |
-| 参数校验 | `@Valid` + Spring Validation + `@Size(max=100)` |
+| 参数校验 | `@Valid` + Spring Validation + `@NotBlank/@Size` |
+| 数据库外键约束 | `ON DELETE RESTRICT + ON UPDATE RESTRICT` 保护数据完整性 |
+| 软删除 | 学院/专业删除标记为 INACTIVE，保留数据可追溯 |
 | 全局异常 | 统一错误响应格式 |
-| RBAC | `student` / `teacher` / `admin` 三级角色 |
+| RBAC | `student` / `teacher` / `admin` 三级角色 + `@PreAuthorize` |
+| 操作审计日志 | SLF4J 记录管理员对学院/专业的增删改操作 |
 | 前端安全 | 测试账号仅开发环境可见，BFF 模式不存储敏感信息 |
 
 ---
@@ -1166,7 +1555,7 @@ Access Token 即将过期:
    ├─ MySQL 8.0 服务容器
    ├─ JDK 17 (Temurin)
    ├─ 执行 init_database.sql
-   ├─ mvn verify (73 测试用例)
+   ├─ mvn verify (87+ 测试用例)
    ├─ 发布 JUnit 测试报告
    └─ 上传测试产物
 
@@ -1196,8 +1585,10 @@ Access Token 即将过期:
 | 前端 `Login.bff.test.js` | 2 | BFF 模式存储 id 验证 |
 | 前端 `AdminStudent.college.test.js` | 9 | 学院字段下拉选择器、表单校验 |
 | 前端 `passwordValidator.test.js` | 41 | 密码复杂度、边界值、确认密码校验 |
+| 前端 E2E (Playwright) | 13 | 学院/专业 CRUD、级联下拉、表单提交、业务规则 |
 | **总计后端** | **87+** | |
-| **总计前端** | **56+** | |
+| **总计前端 (单元)** | **56+** | |
+| **总计前端 (E2E)** | **13** | |
 | **总计 BFF** | **50+** | |
 
 ---
@@ -1220,7 +1611,7 @@ Access Token 即将过期:
 mysql -u root -p < d:/789/database/init_database.sql
 ```
 
-这将自动创建数据库 `lab_course_system`、8 张数据表、索引和种子数据。
+这将自动创建数据库 `lab_course_system`、13 张数据表、1 张日志表、外键约束、索引和种子数据。
 
 ### 10.3 后端启动
 
@@ -1283,8 +1674,14 @@ mvn test -f backend/pom.xml -Dtest=AttendanceServiceTest
 # BFF 测试
 cd bff && npm test
 
-# 前端测试
+# 前端单元测试
 cd frontend && npm test
+
+# 前端 E2E 测试
+cd frontend && npx playwright test
+npx playwright test --headed                # 有头模式
+npx playwright test tests/e2e/college/      # 按分类运行
+npx playwright show-report playwright-report # 查看报告
 ```
 
 ### 10.8 默认账号
@@ -1305,11 +1702,13 @@ cd frontend && npm test
 lab-course-system (Spring Boot 3.2.0)
 ├── spring-boot-starter-web          # Web MVC
 ├── spring-boot-starter-data-jpa     # JPA + Hibernate
+├── spring-boot-starter-jdbc         # JDBC
 ├── spring-boot-starter-security     # Spring Security
 ├── spring-boot-starter-validation   # Bean Validation
+├── spring-boot-devtools             # 热重载 (dev)
 ├── mysql-connector-j                # MySQL 驱动
 ├── jjwt-api / jjwt-impl / jjwt-jackson  # JWT (0.12.3)
-├── lombok                           # 代码简化
+├── lombok                           # 代码简化 (1.18.30)
 ├── spring-boot-starter-test         # 测试 (JUnit 5)
 └── spring-security-test             # 安全测试
 ```
@@ -1338,15 +1737,18 @@ lab-course-frontend (Vue 3.4)
 ├── axios                            # HTTP 客户端
 ├── element-plus                     # UI 组件库
 ├── xlsx                             # Excel 导出
-└── vitest (dev)                     # 测试
+├── @playwright/test (dev)           # E2E 测试框架
+├── @vue/test-utils (dev)            # 组件测试工具
+├── jsdom (dev)                      # DOM 模拟环境
+└── vitest (dev)                     # 单元测试
 ```
 
 ### 11.4 组件调用关系图
 
 ```
-Vue 视图组件
+Vue 视图组件 (17个)
   ↓ (import)
-API 封装层 (api/*.js)
+API 封装层 (api/*.js, 12个)
   ↓ (import)
 request.js (Axios 实例)
   ↓ (import)
@@ -1358,13 +1760,29 @@ BFF (Fastify) 或 直接到 Spring Boot
   ├─ 公开路由 → 直接转发 | 认证路由 → JWT验证
   └─ transparentProxy → X-Forwarded清理 → 附加Authorization头
   ↓
-Spring Boot Controller
+Spring Boot
+  ├─ SecurityConfig → @PreAuthorize + authorizeHttpRequests
+  ├─ Controller (11个) → Service (12个) → Repository (12个)
+  └─ GlobalExceptionHandler
   ↓
-Service 实现 (含 partial update 逻辑)
-  ↓
-JPA Repository
-  ↓
-MySQL 数据库
+MySQL 8.0 (13张表 + 1张日志表)
+```
+
+### 11.5 数据模型依赖关系
+
+```
+college (学院)
+  ├── college_status_log (学院状态变更日志)
+  ├── major (专业) → major_required_course → course (课程)
+  ├── student (学生)
+  │     ├── selection (选课) → course
+  │     ├── score (成绩) → course
+  │     └── attendance (考勤) → course
+  ├── teacher (教师)
+  │     └── course_teacher → course
+  ├── course (课程)
+  │     └── lab (实验室)
+  └── admin (管理员)
 ```
 
 ---

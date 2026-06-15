@@ -113,7 +113,7 @@ export async function transparentProxyPlugin(app) {
           duration: `${proxyDuration}ms`,
         })
 
-        // 特殊处理非 JSON 响应（文件导出）
+        // 特殊处理非 JSON 响应（文件导出、Spring Security 错误页等）
         const contentType = response.headers.get('content-type') || ''
         if (contentType.includes('application/vnd.openxmlformats')
           || contentType.includes('application/octet-stream')) {
@@ -123,6 +123,17 @@ export async function transparentProxyPlugin(app) {
           })
           const buffer = await response.arrayBuffer()
           return reply.send(Buffer.from(buffer))
+        }
+
+        // 非 JSON 响应（如 Spring Security 默认 HTML 错误页）直接透传状态码
+        if (!contentType.includes('application/json')) {
+          log.warn('代理转发：非 JSON 响应', {
+            requestId: request.id,
+            path,
+            backendStatus: response.status,
+            contentType,
+          })
+          return { success: false, message: '权限不足', status: response.status }
         }
 
         const jsonResponse = await response.json()

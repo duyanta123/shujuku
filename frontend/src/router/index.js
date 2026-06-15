@@ -16,6 +16,7 @@ import AdminStudent from '../views/admin/AdminStudent.vue'
 import AdminTeacher from '../views/admin/AdminTeacher.vue'
 import AdminCourse from '../views/admin/AdminCourse.vue'
 import AdminLab from '../views/admin/AdminLab.vue'
+import AdminCollegeMajor from '../views/admin/AdminCollegeMajor.vue'
 
 const routes = [
   {
@@ -119,6 +120,11 @@ const routes = [
         path: 'lab',
         name: 'AdminLab',
         component: AdminLab
+      },
+      {
+        path: 'college-major',
+        name: 'AdminCollegeMajor',
+        component: AdminCollegeMajor
       }
     ]
   }

@@ -7,7 +7,16 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "npx playwright test",
+    "test:e2e:headed": "npx playwright test --headed",
+    "test:e2e:auth": "npx playwright test tests/e2e/auth/",
+    "test:e2e:college": "npx playwright test tests/e2e/college/",
+    "test:e2e:major": "npx playwright test tests/e2e/major/",
+    "test:e2e:dialog": "npx playwright test tests/e2e/dialog/",
+    "test:e2e:business": "npx playwright test tests/e2e/business/",
+    "test:e2e:ui": "npx playwright test tests/e2e/ui/",
+    "test:e2e:report": "npx playwright show-report playwright-report"
   },
   "dependencies": {
     "axios": "^1.6.2",
@@ -17,6 +26,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@vitejs/plugin-vue": "^5.0.0",
     "@vue/test-utils": "^2.4.11",
     "jsdom": "^29.1.1",

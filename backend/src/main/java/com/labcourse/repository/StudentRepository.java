@@ -10,4 +10,6 @@ import java.util.Optional;
 public interface StudentRepository extends JpaRepository<Student, Long> {
     Optional<Student> findByStudentNo(String studentNo);
     Optional<Student> findByRefreshToken(String refreshToken);
+    long countByCollegeId(Long collegeId);
+    long countByMajorId(Long majorId);
 }

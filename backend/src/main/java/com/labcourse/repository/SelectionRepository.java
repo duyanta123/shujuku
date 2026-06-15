@@ -18,4 +18,6 @@ public interface SelectionRepository extends JpaRepository<Selection, Long> {
     
     @Query("SELECT s FROM Selection s WHERE s.studentId = :studentId AND s.courseId = :courseId")
     Selection checkSelection(@Param("studentId") Long studentId, @Param("courseId") Long courseId);
+
+    boolean existsByCourseId(Long courseId);
 }

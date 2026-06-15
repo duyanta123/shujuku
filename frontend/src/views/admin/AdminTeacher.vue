@@ -10,7 +10,7 @@
         <el-table-column prop="teacherNo" label="工号" width="150" />
         <el-table-column prop="name" label="姓名" width="120" />
         <el-table-column prop="title" label="职称" width="120" />
-        <el-table-column prop="college" label="学院" min-width="180" />
+        <el-table-column prop="collegeName" label="学院" min-width="180" />
         <el-table-column label="操作" width="260" align="center">
           <template #default="scope">
             <el-button type="primary" size="small" text @click="handleEdit(scope.row)">编辑</el-button>
@@ -38,9 +38,9 @@
             <el-option label="助教" value="助教" />
           </el-select>
         </el-form-item>
-        <el-form-item label="学院" prop="college">
-          <el-select v-model="teacherForm.college" style="width:100%" placeholder="请选择学院">
-            <el-option v-for="c in collegeOptions" :key="c" :label="c" :value="c" />
+        <el-form-item label="学院" prop="collegeId">
+          <el-select v-model="teacherForm.collegeId" style="width:100%" placeholder="请选择学院" filterable :loading="collegesLoading">
+            <el-option v-for="c in collegeOptions" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="密码" prop="password">
@@ -50,7 +50,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSave">保存</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleSave">保存</el-button>
       </template>
     </el-dialog>
 
@@ -84,6 +84,7 @@
 import { ref, onMounted, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getTeacherList, addTeacher, updateTeacher, deleteTeacher } from '../../api/teacher'
+import { getCollegeList } from '../../api/college'
 import {
   validatePassword,
   validateConfirmPassword,
@@ -91,24 +92,15 @@ import {
   getPasswordValidationError
 } from '../../utils/passwordValidator'
 
-const collegeOptions = [
-  '数学与计算机科学学院',
-  '物理与电子工程学院',
-  '化学与材料科学学院',
-  '生命科学学院',
-  '地理与环境科学学院',
-  '信息工程学院',
-  '经济与管理学院',
-  '外国语学院',
-  '马克思主义学院',
-  '教育学院'
-]
+const collegeOptions = ref([])
+const collegesLoading = ref(false)
+const submitting = ref(false)
 
 const teacherList = ref([])
 const dialogVisible = ref(false)
 const dialogTitle = ref('添加教师')
 const teacherFormRef = ref(null)
-const teacherForm = ref({ id: null, teacherNo: '', name: '', title: '', college: '', password: '' })
+const teacherForm = ref({ id: null, teacherNo: '', name: '', title: '', collegeId: null, password: '' })
 
 const teacherRules = {
   teacherNo: [
@@ -121,7 +113,7 @@ const teacherRules = {
   title: [
     { required: true, message: '请选择职称', trigger: 'change' }
   ],
-  college: [
+  collegeId: [
     { required: true, message: '请选择学院', trigger: 'change' }
   ],
   password: [
@@ -166,7 +158,7 @@ const loadTeachers = async () => {
 
 const handleAdd = () => {
   dialogTitle.value = '添加教师'
-  teacherForm.value = { id: null, teacherNo: '', name: '', title: '', college: '', password: '' }
+  teacherForm.value = { id: null, teacherNo: '', name: '', title: '', collegeId: null, password: '' }
   teacherFormRef.value?.resetFields()
   dialogVisible.value = true
 }
@@ -184,6 +176,7 @@ const handleSave = async () => {
   } catch {
     return
   }
+  submitting.value = true
   try {
     const isUpdate = !!teacherForm.value.id
     const result = isUpdate
@@ -197,6 +190,7 @@ const handleSave = async () => {
       ElMessage.error(result.message)
     }
   } catch (error) { ElMessage.error('保存失败') }
+  finally { submitting.value = false }
 }
 
 const handleResetPassword = (row) => {
@@ -248,7 +242,18 @@ const handleDelete = async (id) => {
   } catch (error) { if (error !== 'cancel') ElMessage.error('删除失败') }
 }
 
-onMounted(() => { loadTeachers() })
+onMounted(() => { loadTeachers(); loadCollegeOptions() })
+
+const loadCollegeOptions = async () => {
+  collegesLoading.value = true
+  try {
+    const result = await getCollegeList({ status: 'ACTIVE', size: 999 })
+    if (result.success) {
+      collegeOptions.value = result.data?.records || result.data || []
+    }
+  } catch (error) { /* 静默 */ }
+  finally { collegesLoading.value = false }
+}
 </script>
 
 <style scoped>

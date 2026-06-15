@@ -2,6 +2,7 @@ package com.labcourse.service.impl;
 
 import com.labcourse.entity.Course;
 import com.labcourse.repository.CourseRepository;
+import com.labcourse.repository.SelectionRepository;
 import com.labcourse.service.CourseService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +23,9 @@ public class CourseServiceImpl implements CourseService {
 
     @Autowired
     private CourseRepository courseRepository;
+
+    @Autowired
+    private SelectionRepository selectionRepository;
     
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -71,6 +75,16 @@ public class CourseServiceImpl implements CourseService {
             if (course.getCourseTime() != null) { existing.setCourseTime(course.getCourseTime()); }
             if (course.getMaxCount() != null) { existing.setMaxCount(course.getMaxCount()); }
             if (course.getCollege() != null) { existing.setCollege(course.getCollege()); }
+            if (course.getCollegeId() != null) { existing.setCollegeId(course.getCollegeId()); }
+            if (course.getCourseType() != null) {
+                if (existing.getCourseType() != null && !existing.getCourseType().equals(course.getCourseType())) {
+                    if (selectionRepository.existsByCourseId(course.getId())) {
+                        logger.warn("修改课程类型失败：课程 {} 已有学生选课，无法修改课程类型", course.getId());
+                        return false;
+                    }
+                }
+                existing.setCourseType(course.getCourseType());
+            }
             courseRepository.save(existing);
             return true;
         }

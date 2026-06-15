@@ -30,6 +30,13 @@ public class Course {
     @Column(name = "college", length = 100)
     private String college;
     
+    @Column(name = "college_id")
+    private Long collegeId;
+    
+    @Size(max = 100)
+    @Column(name = "course_type", length = 100)
+    private String courseType = "ELECTIVE";
+    
     @Column(name = "created_at")
     private LocalDateTime createdAt;
     
@@ -58,6 +65,12 @@ public class Course {
 
     public String getCollege() { return college; }
     public void setCollege(String college) { this.college = college; }
+
+    public Long getCollegeId() { return collegeId; }
+    public void setCollegeId(Long collegeId) { this.collegeId = collegeId; }
+
+    public String getCourseType() { return courseType; }
+    public void setCourseType(String courseType) { this.courseType = courseType; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

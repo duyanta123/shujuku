@@ -8,7 +8,7 @@
     <div class="table-responsive">
       <el-table :data="courseList" stripe>
         <el-table-column prop="courseName" label="课程名" min-width="150" />
-        <el-table-column prop="college" label="学院" min-width="150" />
+        <el-table-column prop="collegeName" label="学院" min-width="150" />
         <el-table-column prop="courseTime" label="上课时间" width="150" />
         <el-table-column prop="maxCount" label="容量" width="100" />
         <el-table-column label="操作" width="180" align="center">
@@ -38,8 +38,17 @@
         <el-form-item label="上课时间" prop="courseTime">
           <el-input v-model="courseForm.courseTime" placeholder="如：周一 1-2节" />
         </el-form-item>
-        <el-form-item label="学院" prop="college">
-          <el-input v-model="courseForm.college" placeholder="请输入学院" />
+        <el-form-item label="学院" prop="collegeId">
+          <el-select v-model="courseForm.collegeId" style="width:100%" placeholder="请选择学院" filterable :loading="collegesLoading">
+            <el-option v-for="c in collegeOptions" :key="c.id" :label="c.name" :value="c.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="课程类型" prop="courseType">
+          <el-select v-model="courseForm.courseType" style="width:100%" placeholder="请选择课程类型" :disabled="courseTypeDisabled">
+            <el-option label="必修课" value="REQUIRED" />
+            <el-option label="选修课" value="ELECTIVE" />
+          </el-select>
+          <span v-if="courseTypeDisabled" class="form-hint">该课程已有学生选课，无法修改课程类型</span>
         </el-form-item>
         <el-form-item label="最大人数" prop="maxCount">
           <el-input-number v-model="courseForm.maxCount" />
@@ -47,7 +56,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSave">保存</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleSave">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -59,14 +68,19 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { getCourseListSimple, addCourse, updateCourse, deleteCourse } from '../../api/course'
 import { getTeacherList } from '../../api/teacher'
 import { getLabList } from '../../api/lab'
+import { getCollegeList } from '../../api/college'
 
 const courseList = ref([])
 const teacherList = ref([])
 const labList = ref([])
+const collegeOptions = ref([])
+const collegesLoading = ref(false)
+const submitting = ref(false)
+const courseTypeDisabled = ref(false)
 const dialogVisible = ref(false)
 const dialogTitle = ref('添加课程')
 const courseFormRef = ref(null)
-const courseForm = ref({ id: null, courseName: '', teacherId: null, labId: null, courseTime: '', college: '', maxCount: 30 })
+const courseForm = ref({ id: null, courseName: '', teacherId: null, labId: null, courseTime: '', collegeId: null, courseType: 'ELECTIVE', maxCount: 30 })
 
 const courseRules = {
   courseName: [
@@ -80,6 +94,12 @@ const courseRules = {
   ],
   courseTime: [
     { required: true, message: '请输入上课时间', trigger: 'blur' }
+  ],
+  collegeId: [
+    { required: true, message: '请选择学院', trigger: 'change' }
+  ],
+  courseType: [
+    { required: true, message: '请选择课程类型', trigger: 'change' }
   ],
   maxCount: [
     { required: true, message: '请输入最大人数', trigger: 'blur' },
@@ -118,7 +138,8 @@ const loadLabs = async () => {
 
 const handleAdd = () => {
   dialogTitle.value = '添加课程'
-  courseForm.value = { id: null, courseName: '', teacherId: null, labId: null, courseTime: '', college: '', maxCount: 30 }
+  courseForm.value = { id: null, courseName: '', teacherId: null, labId: null, courseTime: '', collegeId: null, courseType: 'ELECTIVE', maxCount: 30 }
+  courseTypeDisabled.value = false
   courseFormRef.value?.resetFields()
   dialogVisible.value = true
 }
@@ -126,6 +147,7 @@ const handleAdd = () => {
 const handleEdit = (row) => {
   dialogTitle.value = '编辑课程'
   courseForm.value = { ...row }
+  courseTypeDisabled.value = false
   courseFormRef.value?.resetFields()
   dialogVisible.value = true
 }
@@ -136,6 +158,7 @@ const handleSave = async () => {
   } catch {
     return
   }
+  submitting.value = true
   try {
     const isUpdate = !!courseForm.value.id
     const result = isUpdate
@@ -148,6 +171,7 @@ const handleSave = async () => {
         teacherId: courseForm.value.teacherId,
         labId: courseForm.value.labId,
         courseTime: courseForm.value.courseTime,
+        courseType: courseForm.value.courseType,
         maxCount: courseForm.value.maxCount
       })
       ElMessage.success('保存成功')
@@ -157,6 +181,7 @@ const handleSave = async () => {
       ElMessage.error(result.message)
     }
   } catch (error) { ElMessage.error('保存失败') }
+  finally { submitting.value = false }
 }
 
 const handleDelete = async (id) => {
@@ -179,10 +204,28 @@ const handleDelete = async (id) => {
   }
 }
 
-onMounted(() => { loadCourses(); loadTeachers(); loadLabs() })
+onMounted(() => { loadCourses(); loadTeachers(); loadLabs(); loadCollegeOptions() })
+
+const loadCollegeOptions = async () => {
+  collegesLoading.value = true
+  try {
+    const result = await getCollegeList({ status: 'ACTIVE', size: 999 })
+    if (result.success) {
+      collegeOptions.value = result.data?.records || result.data || []
+    }
+  } catch (error) { /* 静默 */ }
+  finally { collegesLoading.value = false }
+}
 </script>
 
 <style scoped>
+.form-hint {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
 .el-form :deep(.el-form-item__error) {
   font-size: 0.78rem;
   color: #f56c6c;
