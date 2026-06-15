@@ -110,8 +110,35 @@ public class AttendanceController {
      */
     @PutMapping("/update-status")
     public ResponseEntity<Map<String, Object>> updateStatus(@RequestBody Map<String, Object> data) {
-        Long attendanceId = Long.valueOf(data.get("attendanceId").toString());
-        String newStatus = data.get("newStatus").toString();
+        // Critical fix: 空值检查防止 NullPointerException
+        if (data.get("attendanceId") == null || data.get("newStatus") == null) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", false);
+            result.put("message", "attendanceId 和 newStatus 不能为空");
+            return ResponseEntity.badRequest().body(result);
+        }
+
+        Long attendanceId;
+        String newStatus;
+        try {
+            attendanceId = Long.valueOf(data.get("attendanceId").toString());
+            newStatus = data.get("newStatus").toString();
+        } catch (NumberFormatException e) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", false);
+            result.put("message", "attendanceId 格式无效");
+            return ResponseEntity.badRequest().body(result);
+        }
+
+        // Critical fix: 验证 newStatus 是否为有效枚举值
+        try {
+            com.labcourse.entity.AttendanceStatus.valueOf(newStatus);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", false);
+            result.put("message", "无效的考勤状态: " + newStatus);
+            return ResponseEntity.badRequest().body(result);
+        }
 
         // Security fix: teacherId从JWT Token中获取，不信任请求体
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
