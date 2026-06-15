@@ -46,7 +46,9 @@ public class JwtFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             }
         } catch (Exception e) {
-            logger.error("JWT验证失败", e);
+            logger.error("JWT验证失败，请求被拒绝", e);
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "认证失败");
+            return;
         }
         filterChain.doFilter(request, response);
     }

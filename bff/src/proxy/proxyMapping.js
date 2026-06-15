@@ -13,22 +13,22 @@ const publicPaths = [
   '/api/course/list/simple',
 ]
 
-// ── 需要认证的路由 ──
+// ── 需要认证的路由（不含末尾斜杠，确保 startsWith 正确匹配）──
 const authenticatedPaths = [
-  '/api/admin/',
-  '/api/attendance/',
+  '/api/admin',
+  '/api/attendance',
   '/api/auth/refresh',
   '/api/auth/validate',
-  '/api/college/',
-  '/api/course/',
-  '/api/course-teacher/',
-  '/api/lab/',
-  '/api/major/',
-  '/api/major-required-course/',
-  '/api/score/',
-  '/api/selection/',
-  '/api/student/',
-  '/api/teacher/',
+  '/api/college',
+  '/api/course',
+  '/api/course-teacher',
+  '/api/lab',
+  '/api/major',
+  '/api/major-required-course',
+  '/api/score',
+  '/api/selection',
+  '/api/student',
+  '/api/teacher',
 ]
 
 /**
