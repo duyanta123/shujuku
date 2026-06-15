@@ -35,4 +35,8 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
     List<Attendance> findByCourseIdOrderByAttendanceDateDesc(Long courseId);
 
     boolean existsByStudentIdAndCourseIdAndAttendanceDate(Long studentId, Long courseId, LocalDate date);
+
+    long countByStudentId(Long studentId);
+
+    long countByCourseId(Long courseId);
 }

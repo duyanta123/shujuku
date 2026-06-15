@@ -81,6 +81,9 @@ public class Attendance {
 
     @PrePersist
     protected void onCreate() {
+        if (checkInTime == null) {
+            checkInTime = LocalDateTime.now();
+        }
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
     }

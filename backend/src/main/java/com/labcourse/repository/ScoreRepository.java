@@ -9,4 +9,8 @@ import java.util.Optional;
 @Repository
 public interface ScoreRepository extends JpaRepository<Score, Long> {
     Optional<Score> findByStudentIdAndCourseId(Long studentId, Long courseId);
+
+    long countByStudentId(Long studentId);
+
+    long countByCourseId(Long courseId);
 }

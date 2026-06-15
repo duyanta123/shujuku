@@ -20,4 +20,6 @@ public interface SelectionRepository extends JpaRepository<Selection, Long> {
     Selection checkSelection(@Param("studentId") Long studentId, @Param("courseId") Long courseId);
 
     boolean existsByCourseId(Long courseId);
+
+    long countByStudentId(Long studentId);
 }

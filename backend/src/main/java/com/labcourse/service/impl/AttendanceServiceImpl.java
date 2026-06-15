@@ -84,6 +84,7 @@ public class AttendanceServiceImpl implements AttendanceService {
             newAttendance.setCourseId(courseId);
             newAttendance.setAttendanceStatus(AttendanceStatus.valueOf(status));
             newAttendance.setAttendanceDate(today);
+            newAttendance.setCheckInTime(LocalDateTime.now());
             attendanceRepository.save(newAttendance);
         }
         return true;
@@ -252,6 +253,7 @@ public class AttendanceServiceImpl implements AttendanceService {
             attendance.setCourseId(courseId);
             attendance.setAttendanceStatus(status);
             attendance.setAttendanceDate(today);
+            attendance.setCheckInTime(now);
             attendanceRepository.save(attendance);
 
             log.info("[checkIn] 线程-{} | 分支-签到成功 | studentId={}, courseId={}, status={}, reason={}, recordId={}",
