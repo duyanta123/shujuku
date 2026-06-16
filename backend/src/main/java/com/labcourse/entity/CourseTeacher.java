@@ -4,7 +4,9 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "course_teacher")
+@Table(name = "course_teacher", uniqueConstraints = {
+    @UniqueConstraint(columnNames = {"course_id", "teacher_id"}, name = "uk_ct_course_teacher")
+})
 public class CourseTeacher {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -13,7 +15,7 @@ public class CourseTeacher {
     @Column(name = "course_id", nullable = false)
     private Long courseId;
 
-    @Column(name = "teacher_id", nullable = false, unique = true)
+    @Column(name = "teacher_id", nullable = false)
     private Long teacherId;
 
     @Column(name = "created_at")

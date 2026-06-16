@@ -214,12 +214,13 @@ CREATE TABLE major_required_course (
 CREATE TABLE course_teacher (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     course_id BIGINT NOT NULL COMMENT '课程ID',
-    teacher_id BIGINT NOT NULL UNIQUE COMMENT '教师ID（全局唯一，一名教师仅教一门课）',
+    teacher_id BIGINT NOT NULL COMMENT '教师ID',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_ct_course FOREIGN KEY (course_id) REFERENCES course(id)
         ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_ct_teacher FOREIGN KEY (teacher_id) REFERENCES teacher(id)
-        ON DELETE RESTRICT ON UPDATE RESTRICT
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
+    UNIQUE KEY uk_ct_course_teacher (course_id, teacher_id) COMMENT '同一教师不能在同一门课中重复出现'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课程-教师关联表';
 
 -- ============================================================

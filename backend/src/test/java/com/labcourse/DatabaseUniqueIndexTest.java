@@ -30,6 +30,7 @@ public class DatabaseUniqueIndexTest {
     @Autowired private CourseRepository courseRepository;
     @Autowired private SelectionRepository selectionRepository;
     @Autowired private AttendanceRepository attendanceRepository;
+    @Autowired private CourseTeacherRepository courseTeacherRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -198,5 +199,59 @@ public class DatabaseUniqueIndexTest {
             attendanceRepository.save(duplicate);
             entityManager.flush();
         }, "同一天重复签到应该抛出唯一约束异常");
+    }
+
+    /**
+     * Test 8: 同一教师可以教多门不同课程 → 应该成功
+     * 验证修复：教师可以教授多门课程，修复了之前 teacher_id UNIQUE 的限制
+     */
+    @Test
+    @Order(8)
+    @Transactional
+    @DisplayName("课程-教师关联：同一教师可以教多门不同课程")
+    void sameTeacherTeachMultipleCourses_ShouldSucceed() {
+        // 创建两条课程-教师关联：同一教师教两门不同课程
+        CourseTeacher ct1 = new CourseTeacher();
+        ct1.setCourseId(1L);
+        ct1.setTeacherId(3L);  // 使用未在 course_teacher 中的教师
+        courseTeacherRepository.save(ct1);
+        entityManager.flush();
+
+        CourseTeacher ct2 = new CourseTeacher();
+        ct2.setCourseId(2L);
+        ct2.setTeacherId(3L);  // 同一教师教另一门课
+        courseTeacherRepository.save(ct2);
+        entityManager.flush();
+
+        // 验证两条记录都成功保存
+        assertEquals(2, courseTeacherRepository.findByTeacherId(3L).size(),
+                "同一教师应该可以教多门课程");
+    }
+
+    /**
+     * Test 9: 同一教师在同一门课中重复关联 → 被拒绝
+     * 验证联合唯一约束 (course_id, teacher_id) 生效
+     */
+    @Test
+    @Order(9)
+    @Transactional
+    @DisplayName("课程-教师关联：同一教师在同一门课中重复关联应被拒绝")
+    void duplicateCourseTeacherAssociation_ShouldBeRejected() {
+        // 先创建一条课程-教师关联
+        CourseTeacher first = new CourseTeacher();
+        first.setCourseId(3L);
+        first.setTeacherId(3L);
+        courseTeacherRepository.save(first);
+        entityManager.flush();
+
+        // 尝试创建重复关联（同一教师同一课程）
+        CourseTeacher duplicate = new CourseTeacher();
+        duplicate.setCourseId(3L);
+        duplicate.setTeacherId(3L);
+
+        assertThrows(Exception.class, () -> {
+            courseTeacherRepository.save(duplicate);
+            entityManager.flush();
+        }, "同一教师在同一门课中重复关联应该抛出唯一约束异常");
     }
 }
