@@ -40,8 +40,8 @@ public class SelectionServiceImpl implements SelectionService {
     @Transactional
     public boolean addSelection(Long studentId, Long courseId) {
         try {
-            // Check course exists
-            Course course = courseRepository.findById(courseId).orElse(null);
+            // 用悲观写锁串行化容量校验，防止并发超选
+            Course course = courseRepository.findByIdForUpdate(courseId).orElse(null);
             if (course == null) {
                 logger.warn("选课失败：课程 {} 不存在", courseId);
                 return false;
@@ -71,7 +71,7 @@ public class SelectionServiceImpl implements SelectionService {
             }
 
             Long count = selectionRepository.countByCourseId(courseId);
-            
+
             if (count >= course.getMaxCount()) {
                 logger.warn("选课失败：课程 {} 人数已满 (已选 {} / 上限 {})", courseId, count, course.getMaxCount());
                 return false;
