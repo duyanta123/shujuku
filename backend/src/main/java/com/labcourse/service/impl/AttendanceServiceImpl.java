@@ -360,6 +360,15 @@ public class AttendanceServiceImpl implements AttendanceService {
         }
 
         Attendance attendance = opt.get();
+
+        // Security fix (MEDIUM-003): 验证教师是否为该考勤记录对应课程的授课教师
+        Course course = courseRepository.findById(attendance.getCourseId()).orElse(null);
+        if (course == null || !course.getTeacherId().equals(teacherId)) {
+            result.put("success", false);
+            result.put("message", "无权修改此课程的考勤记录");
+            return result;
+        }
+
         AttendanceStatus currentStatus = attendance.getAttendanceStatus();
 
         // 仅允许从"缺勤"修改为"请假"

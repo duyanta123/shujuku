@@ -1,5 +1,7 @@
 package com.labcourse.controller;
 
+import com.labcourse.entity.Course;
+import com.labcourse.repository.CourseRepository;
 import com.labcourse.service.AttendanceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -19,6 +21,9 @@ public class AttendanceController {
 
     @Autowired
     private AttendanceService attendanceService;
+
+    @Autowired
+    private CourseRepository courseRepository;
 
     /**
      * 学生签到 - 自动判定出勤/迟到
@@ -81,13 +86,24 @@ public class AttendanceController {
 
     /**
      * 获取某课程某天的考勤列表（教师端）
+     * Security fix (MEDIUM-001): 验证教师是否为该课程的授课教师
      */
     @GetMapping("/course")
     public ResponseEntity<Map<String, Object>> getCourseAttendance(
             @RequestParam Long courseId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        List<Map<String, Object>> records = attendanceService.getCourseAttendance(courseId, date);
         Map<String, Object> result = new HashMap<>();
+
+        // Security fix: 验证课程所有权
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        Long currentTeacherId = Long.valueOf(authentication.getPrincipal().toString());
+        if (!isTeacherOfCourse(currentTeacherId, courseId)) {
+            result.put("success", false);
+            result.put("message", "无权访问此课程的考勤数据");
+            return ResponseEntity.status(403).body(result);
+        }
+
+        List<Map<String, Object>> records = attendanceService.getCourseAttendance(courseId, date);
         result.put("success", true);
         result.put("data", records);
         return ResponseEntity.ok(result);
@@ -95,11 +111,22 @@ public class AttendanceController {
 
     /**
      * 获取课程的考勤日期列表
+     * Security fix (MEDIUM-001): 验证教师是否为该课程的授课教师
      */
     @GetMapping("/dates")
     public ResponseEntity<Map<String, Object>> getAttendanceDates(@RequestParam Long courseId) {
-        List<LocalDate> dates = attendanceService.getAttendanceDates(courseId);
         Map<String, Object> result = new HashMap<>();
+
+        // Security fix: 验证课程所有权
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        Long currentTeacherId = Long.valueOf(authentication.getPrincipal().toString());
+        if (!isTeacherOfCourse(currentTeacherId, courseId)) {
+            result.put("success", false);
+            result.put("message", "无权访问此课程的考勤数据");
+            return ResponseEntity.status(403).body(result);
+        }
+
+        List<LocalDate> dates = attendanceService.getAttendanceDates(courseId);
         result.put("success", true);
         result.put("data", dates);
         return ResponseEntity.ok(result);
@@ -125,11 +152,22 @@ public class AttendanceController {
 
     /**
      * 导出考勤数据
+     * Security fix (MEDIUM-001): 验证教师是否为该课程的授课教师
      */
     @GetMapping("/export")
     public ResponseEntity<Map<String, Object>> export(@RequestParam Long courseId) {
-        List<Map<String, Object>> records = attendanceService.exportAttendance(courseId);
         Map<String, Object> result = new HashMap<>();
+
+        // Security fix: 验证课程所有权
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        Long currentTeacherId = Long.valueOf(authentication.getPrincipal().toString());
+        if (!isTeacherOfCourse(currentTeacherId, courseId)) {
+            result.put("success", false);
+            result.put("message", "无权访问此课程的考勤数据");
+            return ResponseEntity.status(403).body(result);
+        }
+
+        List<Map<String, Object>> records = attendanceService.exportAttendance(courseId);
         result.put("success", true);
         result.put("data", records);
         return ResponseEntity.ok(result);
@@ -172,5 +210,13 @@ public class AttendanceController {
         result.put("success", success);
         result.put("message", success ? "考勤录入成功" : "考勤录入失败");
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Security fix (MEDIUM-001): 验证教师是否为指定课程的授课教师
+     */
+    private boolean isTeacherOfCourse(Long teacherId, Long courseId) {
+        Course course = courseRepository.findById(courseId).orElse(null);
+        return course != null && course.getTeacherId().equals(teacherId);
     }
 }

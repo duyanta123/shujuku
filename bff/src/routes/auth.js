@@ -64,8 +64,11 @@ export async function setupAuthRoutes(app) {
           })
 
           const userData = response.data || {}
-          const userId = userData.id || 'unknown'
-          const displayName = userData.name || username || 'unknown'
+          // Security fix (MEDIUM-002): 从后端返回的用户实体中移除敏感字段
+          // 防止 refreshToken 和 password 泄露到前端 JavaScript 上下文
+          const { refreshToken: _rt, password: _pw, ...safeUserData } = userData
+          const userId = safeUserData.id || 'unknown'
+          const displayName = safeUserData.name || username || 'unknown'
 
           log.info('登录成功（双Token模式）', {
             requestId: request.id,
@@ -80,9 +83,9 @@ export async function setupAuthRoutes(app) {
             success: true,
             message: response.message || '登录成功',
             data: {
-              ...userData,
+              ...safeUserData,
               userId,
-              username: username || userData.username || userData.studentNo || userData.teacherNo || 'unknown',
+              username: username || safeUserData.username || safeUserData.studentNo || safeUserData.teacherNo || 'unknown',
               role: roleName,
               tokenExpireTime: Date.now() + config.jwt.accessTokenMaxAge,
             },
