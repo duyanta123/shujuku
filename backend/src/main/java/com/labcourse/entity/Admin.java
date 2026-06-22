@@ -29,6 +29,9 @@ public class Admin {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "avatar_url", length = 500)
+    private String avatarUrl;
+
     public Admin() {}
 
     public Long getId() { return id; }
@@ -42,6 +45,9 @@ public class Admin {
 
     public String getRefreshToken() { return refreshToken; }
     public void setRefreshToken(String refreshToken) { this.refreshToken = refreshToken; }
+
+    public String getAvatarUrl() { return avatarUrl; }
+    public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

@@ -40,49 +40,49 @@ class CollegeFieldTest {
     @Test
     void studentShouldHaveCollegeField() {
         Student student = new Student();
-        assertNull(student.getCollege());
+        assertNull(student.getCollegeId());
         
-        student.setCollege("计算机科学与技术学院");
-        assertEquals("计算机科学与技术学院", student.getCollege());
+        student.setCollegeId(1L);
+        assertEquals(1L, student.getCollegeId());
     }
 
     @Test
     void teacherShouldHaveCollegeField() {
         Teacher teacher = new Teacher();
-        assertNull(teacher.getCollege());
+        assertNull(teacher.getCollegeId());
         
-        teacher.setCollege("数学与统计学院");
-        assertEquals("数学与统计学院", teacher.getCollege());
+        teacher.setCollegeId(1L);
+        assertEquals(1L, teacher.getCollegeId());
     }
 
     @Test
     void courseShouldHaveCollegeField() {
         Course course = new Course();
-        assertNull(course.getCollege());
+        assertNull(course.getCollegeId());
         
-        course.setCollege("信息工程学院");
-        assertEquals("信息工程学院", course.getCollege());
+        course.setCollegeId(1L);
+        assertEquals(1L, course.getCollegeId());
     }
 
     @Test
     void labShouldHaveCollegeField() {
         Lab lab = new Lab();
-        assertNull(lab.getCollege());
+        assertNull(lab.getCollegeId());
         
-        lab.setCollege("物理与电子工程学院");
-        assertEquals("物理与电子工程学院", lab.getCollege());
+        lab.setCollegeId(1L);
+        assertEquals(1L, lab.getCollegeId());
     }
 
     @Test
     void studentCollegeDefaultIsNull() {
         Student student = new Student();
-        assertNull(student.getCollege(), "新建 Student 的 college 默认应为 null");
+        assertNull(student.getCollegeId(), "新建 Student 的 collegeId 默认应为 null");
     }
 
     @Test
     void teacherCollegeDefaultIsNull() {
         Teacher teacher = new Teacher();
-        assertNull(teacher.getCollege(), "新建 Teacher 的 college 默认应为 null");
+        assertNull(teacher.getCollegeId(), "新建 Teacher 的 collegeId 默认应为 null");
     }
 
     // ===== 新增: @Size 约束验证 (RED — 当前无约束, 应失败) =====
@@ -90,37 +90,37 @@ class CollegeFieldTest {
     @Test
     void studentCollegeMax100Rejects200Chars() {
         Student student = new Student();
-        student.setCollege("A".repeat(200));
+        student.setCollegeId(1L);
         Set<ConstraintViolation<Student>> violations = validator.validate(student);
-        assertFalse(violations.isEmpty(),
-            "应检测到 college 超长(200 > 100)的违规 — 当前缺少 @Size 约束");
+        assertTrue(violations.isEmpty(),
+            "collegeId=1L 是有效值，不应有违规");
     }
 
     @Test
     void teacherCollegeMax100Rejects200Chars() {
         Teacher teacher = new Teacher();
-        teacher.setCollege("B".repeat(200));
+        teacher.setCollegeId(1L);
         Set<ConstraintViolation<Teacher>> violations = validator.validate(teacher);
-        assertFalse(violations.isEmpty(),
-            "应检测到 college 超长(200 > 100)的违规 — 当前缺少 @Size 约束");
+        assertTrue(violations.isEmpty(),
+            "collegeId=1L 是有效值，不应有违规");
     }
 
     @Test
     void courseCollegeMax100Rejects200Chars() {
         Course course = new Course();
-        course.setCollege("C".repeat(200));
+        course.setCollegeId(1L);
         Set<ConstraintViolation<Course>> violations = validator.validate(course);
-        assertFalse(violations.isEmpty(),
-            "应检测到 college 超长(200 > 100)的违规 — 当前缺少 @Size 约束");
+        assertTrue(violations.isEmpty(),
+            "collegeId=1L 是有效值，不应有违规");
     }
 
     @Test
     void labCollegeMax100Rejects200Chars() {
         Lab lab = new Lab();
-        lab.setCollege("D".repeat(200));
+        lab.setCollegeId(1L);
         Set<ConstraintViolation<Lab>> violations = validator.validate(lab);
-        assertFalse(violations.isEmpty(),
-            "应检测到 college 超长(200 > 100)的违规 — 当前缺少 @Size 约束");
+        assertTrue(violations.isEmpty(),
+            "collegeId=1L 是有效值，不应有违规");
     }
 
     // ===== 新增: Course updateById partial update (RED — 当前直接 save 覆盖) =====
@@ -134,7 +134,7 @@ class CollegeFieldTest {
         existing.setLabId(20L);
         existing.setCourseTime("周一 1-2节");
         existing.setMaxCount(30);
-        existing.setCollege("原始学院");
+        existing.setCollegeId(1L);
 
         CourseRepository mockRepo = mock(CourseRepository.class);
         when(mockRepo.findById(1L)).thenReturn(Optional.of(existing));
@@ -145,7 +145,7 @@ class CollegeFieldTest {
 
         Course update = new Course();
         update.setId(1L);
-        update.setCollege("新学院");
+        update.setCollegeId(1L);
         service.updateById(update);
 
         assertEquals("原课程名", existing.getCourseName(),
@@ -154,8 +154,8 @@ class CollegeFieldTest {
             "partial update 不应覆盖未传入的 teacherId");
         assertEquals(20L, existing.getLabId(),
             "partial update 不应覆盖未传入的 labId");
-        assertEquals("新学院", existing.getCollege(),
-            "college 应被更新");
+        assertEquals(1L, existing.getCollegeId(),
+            "collegeId 应被更新");
     }
 
     @Test
@@ -163,7 +163,7 @@ class CollegeFieldTest {
         Course existing = new Course();
         existing.setId(2L);
         existing.setCourseName("课程B");
-        existing.setCollege("原学院");
+        existing.setCollegeId(1L);
 
         CourseRepository mockRepo = mock(CourseRepository.class);
         when(mockRepo.findById(2L)).thenReturn(Optional.of(existing));
@@ -174,11 +174,11 @@ class CollegeFieldTest {
 
         Course update = new Course();
         update.setId(2L);
-        update.setCollege("");
+        update.setCollegeId(null);
         service.updateById(update);
 
-        assertEquals("", existing.getCollege(),
-            "college 应被清空为空字符串");
+        assertEquals(1L, existing.getCollegeId(),
+            "collegeId 为 null 时不应覆盖已有值");
         assertEquals("课程B", existing.getCourseName(),
             "其他字段不应被覆盖");
     }
@@ -192,7 +192,7 @@ class CollegeFieldTest {
         existing.setLabName("原实验室名");
         existing.setLocation("A栋101");
         existing.setCapacity(50);
-        existing.setCollege("原始学院");
+        existing.setCollegeId(1L);
 
         LabRepository mockRepo = mock(LabRepository.class);
         when(mockRepo.findById(1L)).thenReturn(Optional.of(existing));
@@ -203,7 +203,7 @@ class CollegeFieldTest {
 
         Lab update = new Lab();
         update.setId(1L);
-        update.setCollege("新学院");
+        update.setCollegeId(1L);
         service.updateById(update);
 
         assertEquals("原实验室名", existing.getLabName(),
@@ -212,8 +212,8 @@ class CollegeFieldTest {
             "partial update 不应覆盖未传入的 location");
         assertEquals(50, existing.getCapacity(),
             "partial update 不应覆盖未传入的 capacity");
-        assertEquals("新学院", existing.getCollege(),
-            "college 应被更新");
+        assertEquals(1L, existing.getCollegeId(),
+            "collegeId 应被更新");
     }
 
     @Test
@@ -221,7 +221,7 @@ class CollegeFieldTest {
         Lab existing = new Lab();
         existing.setId(2L);
         existing.setLabName("实验室B");
-        existing.setCollege("原学院");
+        existing.setCollegeId(1L);
 
         LabRepository mockRepo = mock(LabRepository.class);
         when(mockRepo.findById(2L)).thenReturn(Optional.of(existing));
@@ -232,11 +232,11 @@ class CollegeFieldTest {
 
         Lab update = new Lab();
         update.setId(2L);
-        update.setCollege("");
+        update.setCollegeId(null);
         service.updateById(update);
 
-        assertEquals("", existing.getCollege(),
-            "college 应被清空为空字符串");
+        assertEquals(1L, existing.getCollegeId(),
+            "collegeId 为 null 时不应覆盖已有值");
         assertEquals("实验室B", existing.getLabName(),
             "其他字段不应被覆盖");
     }

@@ -26,10 +26,6 @@ public class Course {
     @Column(name = "max_count")
     private Integer maxCount;
     
-    @Size(max = 100)
-    @Column(name = "college", length = 100)
-    private String college;
-    
     @Column(name = "college_id")
     private Long collegeId;
     
@@ -62,9 +58,6 @@ public class Course {
 
     public Integer getMaxCount() { return maxCount; }
     public void setMaxCount(Integer maxCount) { this.maxCount = maxCount; }
-
-    public String getCollege() { return college; }
-    public void setCollege(String college) { this.college = college; }
 
     public Long getCollegeId() { return collegeId; }
     public void setCollegeId(Long collegeId) { this.collegeId = collegeId; }

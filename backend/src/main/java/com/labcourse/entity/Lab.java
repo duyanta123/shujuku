@@ -19,11 +19,6 @@ public class Lab {
     
     @Column(name = "capacity")
     private Integer capacity;
-    
-    // @deprecated 计划 v2.1 删除，迁移至 collegeId
-    @Size(max = 100)
-    @Column(name = "college", length = 100)
-    private String college;
 
     @Column(name = "college_id")
     private Long collegeId;
@@ -47,9 +42,6 @@ public class Lab {
 
     public Integer getCapacity() { return capacity; }
     public void setCapacity(Integer capacity) { this.capacity = capacity; }
-
-    public String getCollege() { return college; }
-    public void setCollege(String college) { this.college = college; }
 
     public Long getCollegeId() { return collegeId; }
     public void setCollegeId(Long collegeId) { this.collegeId = collegeId; }

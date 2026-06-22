@@ -8,10 +8,15 @@ export function studentLogin(data) {
   })
 }
 
-export function getStudentList() {
+export function getStudentList(collegeId) {
+  const params = {}
+  if (collegeId !== undefined && collegeId !== '') {
+    params.collegeId = collegeId
+  }
   return request({
     url: '/student/list',
-    method: 'get'
+    method: 'get',
+    params: Object.keys(params).length > 0 ? params : undefined
   })
 }
 
@@ -35,5 +40,12 @@ export function deleteStudent(id) {
   return request({
     url: `/student/delete/${id}`,
     method: 'delete'
+  })
+}
+
+export function resetStudentPassword(id) {
+  return request({
+    url: `/student/reset-password/${id}`,
+    method: 'post'
   })
 }

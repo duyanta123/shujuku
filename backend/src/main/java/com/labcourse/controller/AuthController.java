@@ -101,17 +101,39 @@ public class AuthController {
      */
     @PostMapping("/logout")
     public ResponseEntity<Map<String, Object>> logout(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return logout(authHeader, null);
+    }
+
+    public ResponseEntity<Map<String, Object>> logout(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestBody(required = false) Map<String, String> request) {
         Map<String, Object> response = new HashMap<>();
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
-            Claims claims = jwtUtil.parseToken(token);
-            if (claims != null) {
-                Long userId = Long.valueOf(claims.getSubject());
-                String role = claims.get("role", String.class);
-                // 清除数据库中的 refreshToken
-                clearRefreshToken(userId, role);
+            Claims claims = jwtUtil.validateAccessToken(token);
+            if (claims == null) {
+                response.put("success", false);
+                response.put("message", "无效的访问令牌");
+                return ResponseEntity.status(401).body(response);
             }
+            Long userId = Long.valueOf(claims.getSubject());
+            String role = claims.get("role", String.class);
+            clearRefreshToken(userId, role);
+        } else if (request != null && request.get("refreshToken") != null) {
+            String refreshToken = request.get("refreshToken");
+            Claims claims = jwtUtil.validateRefreshToken(refreshToken);
+            Optional<?> userOpt = claims == null ? Optional.empty() : findUserByRefreshToken(refreshToken);
+            if (userOpt.isEmpty()) {
+                response.put("success", false);
+                response.put("message", "refreshToken无效或已过期");
+                return ResponseEntity.status(401).body(response);
+            }
+            clearRefreshToken(userOpt.get());
+        } else {
+            response.put("success", false);
+            response.put("message", "缺少有效的登出凭证");
+            return ResponseEntity.status(401).body(response);
         }
 
         response.put("success", true);
@@ -163,6 +185,19 @@ public class AuthController {
                 a.setRefreshToken(null);
                 adminRepository.save(a);
             });
+        }
+    }
+
+    private void clearRefreshToken(Object user) {
+        if (user instanceof Student s) {
+            s.setRefreshToken(null);
+            studentRepository.save(s);
+        } else if (user instanceof Teacher t) {
+            t.setRefreshToken(null);
+            teacherRepository.save(t);
+        } else if (user instanceof Admin a) {
+            a.setRefreshToken(null);
+            adminRepository.save(a);
         }
     }
 }

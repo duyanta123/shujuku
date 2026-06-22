@@ -2,13 +2,31 @@
   <div class="page-container">
     <div class="page-header">
       <h2>课程管理</h2>
-      <el-button type="primary" @click="handleAdd">添加课程</el-button>
+      <div class="header-actions">
+        <el-select
+          v-model="filterCollegeId"
+          placeholder="请选择学院"
+          clearable
+          filterable
+          style="width: 200px"
+          @change="onFilterChange"
+        >
+          <el-option label="全部" value="" />
+          <el-option
+            v-for="c in collegeOptions"
+            :key="c.id"
+            :label="c.name"
+            :value="c.id"
+          />
+        </el-select>
+        <el-button type="primary" @click="handleAdd">添加课程</el-button>
+      </div>
     </div>
 
     <div class="table-responsive">
-      <el-table :data="courseList" stripe>
+      <el-table :data="courseList" stripe v-loading="loading">
         <el-table-column prop="courseName" label="课程名" min-width="150" />
-        <el-table-column prop="collegeName" label="学院" min-width="150" />
+        <el-table-column prop="college" label="学院" min-width="150" />
         <el-table-column prop="courseTime" label="上课时间" width="150" />
         <el-table-column prop="maxCount" label="容量" width="100" />
         <el-table-column label="操作" width="180" align="center">
@@ -80,6 +98,8 @@ const courseTypeDisabled = ref(false)
 const dialogVisible = ref(false)
 const dialogTitle = ref('添加课程')
 const courseFormRef = ref(null)
+const filterCollegeId = ref('')
+const loading = ref(false)
 const courseForm = ref({ id: null, courseName: '', teacherId: null, labId: null, courseTime: '', collegeId: null, courseType: 'ELECTIVE', maxCount: 30 })
 
 const courseRules = {
@@ -115,11 +135,24 @@ const logFormOperation = (action, entity, data) => {
   )
 }
 
-const loadCourses = async () => {
+const loadCourses = async (collegeId) => {
+  loading.value = true
   try {
-    const result = await getCourseListSimple()
+    const result = await getCourseListSimple(collegeId)
     if (result.success) courseList.value = result.data
-  } catch (error) { ElMessage.error('加载课程列表失败') }
+  } catch (error) {
+    ElMessage.error('筛选失败，请重试')
+  } finally {
+    loading.value = false
+  }
+}
+
+let filterTimer = null
+const onFilterChange = (val) => {
+  clearTimeout(filterTimer)
+  filterTimer = setTimeout(() => {
+    loadCourses(val || undefined)
+  }, 300)
 }
 
 const loadTeachers = async () => {
@@ -176,7 +209,7 @@ const handleSave = async () => {
       })
       ElMessage.success('保存成功')
       dialogVisible.value = false
-      loadCourses()
+      loadCourses(filterCollegeId.value || undefined)
     } else {
       ElMessage.error(result.message)
     }
@@ -194,7 +227,7 @@ const handleDelete = async (id) => {
     const result = await deleteCourse(id)
     if (result.success) {
       ElMessage.success('删除成功')
-      loadCourses()
+      loadCourses(filterCollegeId.value || undefined)
     } else {
       ElMessage.error(result.message || '删除失败')
     }
@@ -211,14 +244,23 @@ const loadCollegeOptions = async () => {
   try {
     const result = await getCollegeList({ status: 'ACTIVE', size: 999 })
     if (result.success) {
-      collegeOptions.value = result.data?.records || result.data || []
+      collegeOptions.value = result.data?.content || result.data || []
     }
-  } catch (error) { /* 静默 */ }
-  finally { collegesLoading.value = false }
+  } catch (error) {
+    ElMessage.warning('学院列表加载失败')
+  } finally {
+    collegesLoading.value = false
+  }
 }
 </script>
 
 <style scoped>
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .form-hint {
   display: block;
   font-size: 0.75rem;

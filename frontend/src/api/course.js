@@ -7,10 +7,15 @@ export function getCourseList() {
   })
 }
 
-export function getCourseListSimple() {
+export function getCourseListSimple(collegeId) {
+  const params = {}
+  if (collegeId !== undefined && collegeId !== '') {
+    params.collegeId = collegeId
+  }
   return request({
     url: '/course/list/simple',
-    method: 'get'
+    method: 'get',
+    params: Object.keys(params).length > 0 ? params : undefined
   })
 }
 

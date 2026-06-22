@@ -1,3 +1,4 @@
+import jwt from 'jsonwebtoken'
 import { config } from '../config.js'
 import { backendClient } from '../services/backendClient.js'
 import { jwtVerify } from '../middleware/jwtVerify.js'
@@ -43,29 +44,50 @@ export async function setupAuthRoutes(app) {
       try {
         const response = await backendClient.post(targetPath, request.body)
 
-        if (response.success && response.accessToken && response.refreshToken) {
-          // 签发 Access Token Cookie（短期，30分钟）
+        // 后端返回格式 { success, code, msg, data }
+        if (response.success || response.data) {
+          const userData = response.data || {}
+          const userId = userData.id || userData.studentId || userData.teacherId || username || 'unknown'
+          const displayName = userData.name || username || 'unknown'
+
+          // BFF 生成自己的双Token
+          const accessTokenPayload = {
+            userId,
+            username: username || userData.username || userData.studentNo || userData.teacherNo || 'unknown',
+            role: roleName,
+            type: 'access',
+          }
+          const refreshTokenPayload = {
+            userId,
+            username: username || userData.username || userData.studentNo || userData.teacherNo || 'unknown',
+            role: roleName,
+            type: 'refresh',
+          }
+
+          const accessToken = jwt.sign(accessTokenPayload, config.jwt.secret, {
+            algorithm: 'HS256',
+            expiresIn: config.jwt.accessTokenMaxAge / 1000,
+          })
+          const refreshToken = jwt.sign(refreshTokenPayload, config.jwt.secret, {
+            algorithm: 'HS256',
+            expiresIn: config.jwt.refreshTokenMaxAge / 1000,
+          })
+
           const isSecure = config.nodeEnv === 'production'
-          reply.setCookie(config.jwt.accessTokenCookieName, response.accessToken, {
+          reply.setCookie(config.jwt.accessTokenCookieName, accessToken, {
             httpOnly: true,
             secure: isSecure,
             sameSite: 'lax',
             path: '/',
             maxAge: config.jwt.accessTokenMaxAge / 1000,
           })
-
-          // 签发 Refresh Token Cookie（长期，7天）
-          reply.setCookie(config.jwt.refreshTokenCookieName, response.refreshToken, {
+          reply.setCookie(config.jwt.refreshTokenCookieName, refreshToken, {
             httpOnly: true,
             secure: isSecure,
             sameSite: 'lax',
-            path: '/api/auth', // 仅刷新端点可访问
+            path: '/api/auth',
             maxAge: config.jwt.refreshTokenMaxAge / 1000,
           })
-
-          const userData = response.data || {}
-          const userId = userData.id || 'unknown'
-          const displayName = userData.name || username || 'unknown'
 
           log.info('登录成功（双Token模式）', {
             requestId: request.id,
@@ -78,36 +100,13 @@ export async function setupAuthRoutes(app) {
 
           return {
             success: true,
-            message: response.message || '登录成功',
+            message: response.message || response.msg || '登录成功',
             data: {
               ...userData,
               userId,
               username: username || userData.username || userData.studentNo || userData.teacherNo || 'unknown',
               role: roleName,
               tokenExpireTime: Date.now() + config.jwt.accessTokenMaxAge,
-            },
-          }
-        }
-
-        // 兼容旧版单Token响应
-        if (response.success && response.token) {
-          const isSecure = config.nodeEnv === 'production'
-          reply.setCookie(config.jwt.cookieName, response.token, {
-            httpOnly: true,
-            secure: isSecure,
-            sameSite: 'lax',
-            path: '/',
-            maxAge: config.jwt.cookieMaxAge / 1000,
-          })
-
-          const userData = response.data || {}
-          return {
-            success: true,
-            message: response.message || '登录成功',
-            data: {
-              ...userData,
-              role: roleName,
-              tokenExpireTime: Date.now() + config.jwt.expiration,
             },
           }
         }
@@ -172,7 +171,7 @@ export async function setupAuthRoutes(app) {
     // 本地预验证 JWT 格式和过期
     try {
       const decoded = jwt.verify(refreshToken, config.jwt.secret, {
-        algorithms: ['HS256'],
+        algorithms: ['HS256', 'HS384', 'HS512'],
       })
 
       log.info('Token刷新请求（本地验证通过）', {

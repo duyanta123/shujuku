@@ -1,11 +1,12 @@
 # 实验选课系统
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Java-17-orange" alt="Java">
-  <img src="https://img.shields.io/badge/Spring%20Boot-3.2.0-brightgreen" alt="Spring Boot">
+  <img src="https://img.shields.io/badge/Java-25-orange" alt="Java">
+  <img src="https://img.shields.io/badge/Spring%20Boot-4.0.0-brightgreen" alt="Spring Boot">
   <img src="https://img.shields.io/badge/Vue-3.4-blue" alt="Vue">
   <img src="https://img.shields.io/badge/MySQL-8.0-blue" alt="MySQL">
   <img src="https://img.shields.io/badge/Vite-5.0-purple" alt="Vite">
+  <img src="https://img.shields.io/badge/Fastify-4.28-black" alt="Fastify">
   <img src="https://img.shields.io/badge/JWT-0.12.3-lightgrey" alt="JWT">
   <img src="https://img.shields.io/badge/Element%20Plus-2.4.4-409EFF" alt="Element Plus">
   <img src="https://img.shields.io/badge/CI-GitHub%20Actions-2088FF" alt="CI">
@@ -38,7 +39,7 @@
 
 ## 项目概述
 
-实验选课系统是一个面向高校实验室课程管理的完整 Web 应用，采用前后端分离架构，为学生、教师和管理员三类角色提供一站式实验课程管理解决方案。系统涵盖选课、考勤签到、成绩管理、课表展示、系统管理等核心场景，以良好的用户体验和可靠的数据一致性为目标。
+实验选课系统是一个面向高校实验室课程管理的完整 Web 应用，采用 **前后端分离 + BFF 中间层** 的三层架构，为学生、教师和管理员三类角色提供一站式实验课程管理解决方案。系统涵盖选课、考勤签到、成绩管理、课表展示、学院/专业管理、系统管理等核心场景，以良好的用户体验和可靠的数据一致性为目标。
 
 ### 适用场景
 
@@ -49,14 +50,16 @@
 
 ### 项目亮点
 
-- **JWT 无状态认证**：基于 Token 的身份认证，支持自动刷新，安全可靠
+- **JWT 双Token 无状态认证**：BFF 模式使用 HttpOnly Cookie 存储，支持自动刷新轮转，安全可靠
 - **BCrypt 密码加密**：所有密码经 BCrypt 哈希存储，启动时自动迁移明文密码
-- **登录安全防护**：15 分钟内连续失败 5 次自动锁定 30 分钟
-- **智能签到判定**：根据课程时间自动判定出勤 / 迟到，使用悲观锁防止并发重复签到
+- **三层架构**：前端 (Vue 3) + BFF 中间层 (Fastify) + 后端 (Spring Boot)，安全隔离
+- **登录安全防护**：15 分钟内连续失败 5 次自动锁定 30 分钟（数据库持久化）
+- **智能签到判定**：根据课程时间自动判定出勤/迟到，使用悲观锁防止并发重复签到
 - **离线签到队列**：网络异常时暂存签到请求，恢复后自动同步
 - **课表可视化**：解析课程时间并生成周课表，支持选课时间冲突检测
+- **学院/专业管理层级模型**：引入 college 和 major 独立表，支持级联下拉、软删除
 - **密码强度校验**：前端实时校验密码复杂度（需包含大小写字母、数字、特殊符号中至少三种）
-- **RBAC 权限控制**：基于 Spring Security 的角色权限模型，接口级细粒度控制
+- **RBAC 权限控制**：基于 Spring Security 的三级角色权限模型，接口级细粒度控制
 - **CI/CD 自动化**：GitHub Actions 自动运行 JUnit 测试与 API 集成测试
 - **生产环境配置**：提供独立的 `application-prod.yml`，包含连接池、日志滚动、压缩等生产级配置
 
@@ -90,22 +93,26 @@
 
 | 功能 | 描述 |
 |------|------|
-| 学生管理 | 增删改查学生账号（学号、姓名、性别、专业、密码） |
-| 教师管理 | 增删改查教师账号（工号、姓名、职称、密码） |
-| 课程管理 | 增删改查课程信息（关联教师和实验室、设置上课时间、最大人数） |
-| 实验室管理 | 增删改查实验室信息（名称、地点、容量） |
+| 学生管理 | 增删改查学生账号（学号、姓名、性别、学院、专业、密码） |
+| 教师管理 | 增删改查教师账号（工号、姓名、职称、学院、密码） |
+| 课程管理 | 增删改查课程信息（关联教师和实验室、设置上课时间、课程类型、所属学院） |
+| 实验室管理 | 增删改查实验室信息（名称、地点、容量、所属学院） |
+| 学院专业管理 | 学院/专业增删改查、软删除机制、级联下拉选择器 |
 
 ### 系统安全特性
 
 | 特性 | 描述 |
 |------|------|
-| JWT 认证 | 登录后颁发 Token，有效期 24 小时，前端自动续期 |
+| JWT 双Token 认证 | BFF 模式使用 HttpOnly Cookie 存储 Access Token (30min) + Refresh Token (7d) |
 | BCrypt 加密 | 密码使用 BCrypt 不可逆加密存储 |
 | 密码迁移 | 首次启动自动将数据库中明文密码升级为 BCrypt |
-| 登录锁定 | 同一账号 15 分钟内失败 5 次，锁定 30 分钟 |
+| 登录锁定 | 同一账号 15 分钟内失败 5 次，锁定 30 分钟（数据库持久化） |
 | 全局异常处理 | 统一异常拦截，返回标准化错误响应 |
 | 参数校验 | 使用 `@Valid` 和 Spring Validation 进行请求参数校验 |
-| CORS 保护 | 仅允许前端开发服务器来源的跨域请求 |
+| CORS 保护 | 仅允许前端/BFF 开发服务器来源的跨域请求 |
+| Helmet 安全头 | CSP、X-Frame-Options 等安全头 (BFF) |
+| 速率限制 | 全局 100次/分钟/IP (BFF) |
+| Token 轮转 | Refresh Token 使用后立即失效，颁发新 Token 对 |
 
 ---
 
@@ -115,17 +122,28 @@
 
 | 技术 | 版本 | 用途 |
 |------|------|------|
-| Java | 17 | 核心编程语言 |
-| Spring Boot | 3.2.0 | 应用框架 |
-| Spring Security | 6.2.0 | 认证与授权 |
-| Spring Data JPA | 3.2.0 | ORM 与数据访问 |
-| Hibernate | 6.3.1 | JPA 实现 |
+| Java | 25 | 核心编程语言 |
+| Spring Boot | 4.0.0 | 应用框架 |
+| Spring Security | 7.0.0 | 认证与授权 |
+| Spring Data JPA | 4.0.0 | ORM 与数据访问 |
+| Hibernate | 7.0.0 | JPA 实现 |
 | JJWT | 0.12.3 | JWT Token 生成与解析 |
 | MySQL | 8.0 | 关系型数据库 |
-| HikariCP | - | 数据库连接池 |
-| Lombok | 1.18.30 | 代码简化 |
+| HikariCP | — | 数据库连接池 |
+| Lombok | 1.18.34 | 代码简化 |
 | Maven | 3.9 | 项目构建 |
-| JUnit 5 | - | 单元测试框架 |
+| JUnit 5 | — | 单元测试框架 |
+
+### BFF 中间层技术栈
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| Fastify | 4.28.0 | Node.js Web 框架 |
+| @fastify/cookie | 9.4.0 | Cookie 处理 |
+| @fastify/cors | 9.0.1 | CORS 跨域 |
+| @fastify/helmet | 11.1.1 | 安全头 |
+| @fastify/rate-limit | 9.1.0 | 速率限制 |
+| jsonwebtoken | 9.0.2 | JWT 验证 |
 
 ### 前端技术栈
 
@@ -141,77 +159,80 @@
 
 ### 系统架构
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                      前端 (Vue 3 + Vite)                     │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌───────────────────┐  │
-│  │  Login  │ │ Student │ │ Teacher │ │      Admin        │  │
-│  │   Page  │ │  Views  │ │  Views  │ │      Views        │  │
-│  └────┬────┘ └────┬────┘ └────┬────┘ └────────┬──────────┘  │
-│       │            │           │                │            │
-│  ┌────┴────────────┴───────────┴────────────────┴──────────┐ │
-│  │              Axios + TokenManager                       │ │
-│  │     (Token 自动刷新、请求队列、离线签收队列)              │ │
-│  └────────────────────────┬────────────────────────────────┘ │
-└───────────────────────────┼──────────────────────────────────┘
-                            │  HTTP (Vite Proxy :3000 → :8080)
-┌───────────────────────────┼──────────────────────────────────┐
-│                      后端 (Spring Boot)                      │
-│  ┌────────────────────────┴────────────────────────────────┐ │
-│  │                   JwtFilter (认证)                       │ │
-│  └────────────────────────┬────────────────────────────────┘ │
-│  ┌────────────────────────┴────────────────────────────────┐ │
-│  │              SecurityConfig (RBAC 授权)                  │ │
-│  └────────────────────────┬────────────────────────────────┘ │
-│  ┌────────────────────────┴────────────────────────────────┐ │
-│  │              Controller 层 (9 个控制器)                  │ │
-│  │  Auth | Admin | Student | Teacher | Course | Lab        │ │
-│  │  Selection | Score | Attendance                         │ │
-│  └────────────────────────┬────────────────────────────────┘ │
-│  ┌────────────────────────┴────────────────────────────────┐ │
-│  │              Service 层 (8 个服务 + LoginAttempt)       │ │
-│  └────────────────────────┬────────────────────────────────┘ │
-│  ┌────────────────────────┴────────────────────────────────┐ │
-│  │       Repository 层 (8 个 JPA Repository)              │ │
-│  └────────────────────────┬────────────────────────────────┘ │
-│  ┌────────────────────────┴────────────────────────────────┐ │
-│  │              GlobalExceptionHandler (全局异常)           │ │
-│  └─────────────────────────────────────────────────────────┘ │
-└───────────────────────────┬──────────────────────────────────┘
-                            │
-                    ┌───────┴───────┐
-                    │   MySQL 8.0   │
-                    │  8 张数据表    │
-                    └───────────────┘
+```mermaid
+flowchart TB
+    subgraph Frontend["前端 (Vue 3 + Vite) :3000"]
+        direction TB
+        Login["Login"]
+        StudentViews["Student Views"]
+        TeacherViews["Teacher Views"]
+        AdminViews["Admin Views"]
+        Axios["Axios + TokenManager"]
+        UserStore["userStore + AppLayout + AvatarDialog"]
+    end
+
+    subgraph BFF["BFF 中间层 (Fastify) :4000"]
+        direction TB
+        Middleware["Helmet → CORS → RateLimit → Cookie"]
+        JWT["JWT 验证 (双Token)"]
+        Proxy["透明代理 (X-Forwarded 清理)"]
+        Auth["/api/auth/* 自处理"]
+        API["/api/* 转发后端"]
+    end
+
+    subgraph Backend["后端 (Spring Boot) :8080"]
+        direction TB
+        Filter["JwtFilter"]
+        Security["SecurityConfig (@PreAuthorize)"]
+        Controller["Controller (12个)"]
+        Service["Service (13个)"]
+        Repository["Repository (13个)"]
+        Exception["GlobalExceptionHandler / PasswordMigration"]
+    end
+
+    subgraph DB["MySQL 8.0"]
+        Tables["12 张数据/安全表 + 1 张审计日志表"]
+    end
+
+    Frontend -->|"Vite Proxy /api → :4000"| BFF
+    BFF -->|"HTTP Proxy → :8080"| Backend
+    Backend -->|"JPA / Hibernate"| DB
 ```
 
 ### 数据库 ER 关系
 
-```
-┌──────────┐     ┌──────────┐     ┌──────────┐
-│  Student  │────<│ Selection │>────│  Course  │
-│  (学生)   │     │  (选课)   │     │  (课程)   │
-└──────────┘     └──────────┘     └──────────┘
-      │                                 │
-      │           ┌──────────┐          │
-      ├──────────<│  Score   │>─────────┤
-      │           │  (成绩)   │          │
-      │           └──────────┘          │
-      │                                 │
-      │           ┌──────────┐          │
-      └──────────<│Attendance│>─────────┘
-                  │  (考勤)   │
-                  └──────────┘
+```mermaid
+erDiagram
+    College ||--o{ Major : "1:N"
+    College ||--o{ Student : "1:N"
+    College ||--o{ Teacher : "1:N"
+    College ||--o{ Course : "1:N"
+    College ||--o{ Lab : "1:N"
 
-┌──────────┐     ┌──────────┐
-│  Teacher  │────<│  Course  │
-│  (教师)   │     └──────────┘
-└──────────┘           │
-                  ┌────┴─────┐
-┌──────────┐     │   Lab    │
-│  Admin   │     │ (实验室)  │
-│ (管理员)  │     └──────────┘
-└──────────┘
+    Major ||--o{ Student : "1:N"
+    Major ||--o{ MajorRequiredCourse : "1:N"
+
+    Student ||--o{ Selection : "1:N"
+    Student ||--o{ Score : "1:N"
+    Student ||--o{ Attendance : "1:N"
+
+    Teacher ||--o{ Course : "1:N"
+
+    Course ||--o{ Selection : "1:N"
+    Course ||--o{ Score : "1:N"
+    Course ||--o{ Attendance : "1:N"
+    Course ||--o{ MajorRequiredCourse : "1:N"
+    Course }o--|| Lab : "N:1"
+
+    Admin {
+        bigint id PK
+        string username
+    }
+
+    LoginAttempt {
+        string attempt_key PK
+        int attempts
+    }
 ```
 
 ---
@@ -224,39 +245,34 @@ d:\789\
 │   └── workflows/
 │       └── attendance-ci.yml          # GitHub Actions CI 配置
 │
-├── backend/                           # 后端项目 (Spring Boot)
+├── backend/                           # 后端项目 (Spring Boot 4.0.0)
 │   ├── src/main/java/com/labcourse/
 │   │   ├── config/
 │   │   │   ├── SecurityConfig.java    # Spring Security + CORS 配置
 │   │   │   ├── GlobalExceptionHandler.java  # 全局异常处理
-│   │   │   └── PasswordMigration.java       # 明文密码自动迁移
-│   │   ├── controller/
+│   │   │   ├── PasswordMigration.java       # 明文密码自动迁移
+│   │   │   └── WebMvcConfig.java           # 静态资源映射（头像）
+│   │   ├── controller/                # 12 个控制器
 │   │   │   ├── AuthController.java    # Token 刷新与验证
-│   │   │   ├── AdminController.java   # 管理员管理
+│   │   │   ├── AdminController.java   # 管理员登录
 │   │   │   ├── StudentController.java # 学生登录与管理
 │   │   │   ├── TeacherController.java # 教师登录与管理
 │   │   │   ├── CourseController.java  # 课程管理
 │   │   │   ├── LabController.java     # 实验室管理
 │   │   │   ├── SelectionController.java # 选课管理
 │   │   │   ├── ScoreController.java   # 成绩管理
-│   │   │   └── AttendanceController.java # 考勤管理
-│   │   ├── entity/
-│   │   │   ├── Admin.java
-│   │   │   ├── Student.java
-│   │   │   ├── Teacher.java
-│   │   │   ├── Course.java
-│   │   │   ├── Lab.java
-│   │   │   ├── Selection.java
-│   │   │   ├── Score.java
-│   │   │   ├── Attendance.java
-│   │   │   └── AttendanceStatus.java  # 考勤状态枚举
+│   │   │   ├── AttendanceController.java # 考勤管理
+│   │   │   ├── CollegeController.java # 学院管理
+│   │   │   ├── MajorController.java   # 专业管理
+│   │   │   └── UserController.java    # 用户信息/头像/密码
+│   │   ├── entity/                    # 14 个实体类
 │   │   ├── exception/
 │   │   │   └── AccountLockedException.java # 账号锁定异常
 │   │   ├── filter/
 │   │   │   └── JwtFilter.java         # JWT 认证过滤器
-│   │   ├── repository/                # 8 个 JPA Repository
-│   │   ├── service/                   # 9 个 Service 接口
-│   │   │   ├── impl/                  # 8 个 Service 实现
+│   │   ├── repository/                # 13 个 JPA Repository
+│   │   ├── service/                   # 13 个 Service 接口
+│   │   │   ├── impl/                  # 12 个 Service 实现
 │   │   │   └── LoginAttemptService.java # 登录尝试限制
 │   │   ├── util/
 │   │   │   └── JwtUtil.java           # JWT 工具类
@@ -264,63 +280,54 @@ d:\789\
 │   ├── src/main/resources/
 │   │   ├── application.yml            # 默认配置
 │   │   └── application-prod.yml       # 生产环境配置
-│   ├── src/test/java/com/labcourse/   # 5 个测试类，73 个测试用例
+│   ├── src/test/java/com/labcourse/   # 25 个测试类
 │   └── pom.xml
 │
-├── frontend/                          # 前端项目 (Vue 3)
+├── bff/                               # BFF 中间层 (Fastify 4.28.0)
 │   ├── src/
-│   │   ├── api/                       # API 接口封装 (9 个)
-│   │   │   ├── auth.js
-│   │   │   ├── admin.js
-│   │   │   ├── student.js
-│   │   │   ├── teacher.js
-│   │   │   ├── course.js
-│   │   │   ├── lab.js
-│   │   │   ├── selection.js
-│   │   │   ├── score.js
-│   │   │   └── attendance.js
-│   │   ├── router/
-│   │   │   └── index.js               # 路由配置 + 导航守卫
-│   │   ├── utils/
-│   │   │   ├── request.js             # Axios 封装 + Token 刷新
-│   │   │   ├── tokenManager.js        # Token 生命周期管理
-│   │   │   ├── offlineCheckin.js      # 离线签到队列
-│   │   │   ├── passwordValidator.js   # 密码强度校验
-│   │   │   ├── scheduleParser.js      # 课表解析与冲突检测
-│   │   │   ├── scheduleCache.js       # 课表缓存
-│   │   │   └── scheduleEventBus.js    # 课表更新事件总线
-│   │   ├── views/
+│   │   ├── index.js                   # 入口 (Helmet + RateLimit + 双Token)
+│   │   ├── config.js                  # 配置 (双Token Cookie 名称/有效期)
+│   │   ├── routes/auth.js             # 认证路由 (登录/刷新/登出)
+│   │   ├── middleware/
+│   │   │   ├── jwtVerify.js           # JWT 验证
+│   │   │   ├── errorHandler.js        # 错误处理
+│   │   │   └── requestLogger.js       # 请求日志
+│   │   ├── proxy/
+│   │   │   ├── transparentProxy.js    # 透明代理 (X-Forwarded清理)
+│   │   │   └── proxyMapping.js        # 路由认证映射
+│   │   ├── services/backendClient.js  # 后端 HTTP 客户端
+│   │   └── utils/logger.js            # 日志工具 (脱敏)
+│   ├── tests/                         # 9 个测试文件
+│   └── package.json
+│
+├── frontend/                          # 前端项目 (Vue 3 + Vite)
+│   ├── src/
+│   │   ├── api/                       # API 接口封装 (12 个)
+│   │   ├── router/index.js            # 路由配置 + 导航守卫
+│   │   ├── stores/userStore.js        # 用户状态管理 (Vue Reactive)
+│   │   ├── components/                # 全局组件
+│   │   │   ├── AppLayout.vue          # 通用布局（侧边栏 + 主区域）
+│   │   │   └── AvatarDialog.vue       # 个人信息弹窗（头像 + 修改密码）
+│   │   ├── config/layoutConfig.js     # 三种角色布局配置
+│   │   ├── assets/                    # 静态资源 (SVG图标/头像占位图)
+│   │   ├── utils/                     # 工具模块 (7 个)
+│   │   ├── views/                     # 视图组件 (17 个)
 │   │   │   ├── Login.vue
-│   │   │   ├── student/               # 6 个学生视图
-│   │   │   │   ├── StudentLayout.vue
-│   │   │   │   ├── StudentCourse.vue
-│   │   │   │   ├── StudentMyCourse.vue
-│   │   │   │   ├── StudentSchedule.vue
-│   │   │   │   ├── StudentAttendance.vue
-│   │   │   │   └── StudentAttendanceHistory.vue
-│   │   │   ├── teacher/               # 5 个教师视图
-│   │   │   │   ├── TeacherLayout.vue
-│   │   │   │   ├── TeacherCourse.vue
-│   │   │   │   ├── TeacherStudentList.vue
-│   │   │   │   ├── TeacherAttendance.vue
-│   │   │   │   └── TeacherScore.vue
-│   │   │   └── admin/                 # 5 个管理员视图
-│   │   │       ├── AdminLayout.vue
-│   │   │       ├── AdminStudent.vue
-│   │   │       ├── AdminTeacher.vue
-│   │   │       ├── AdminCourse.vue
-│   │   │       └── AdminLab.vue
-│   │   ├── styles/
-│   │   │   └── global.css
-│   │   ├── App.vue
-│   │   └── main.js
+│   │   │   ├── student/ (6)  teacher/ (5)  admin/ (6)
+│   │   └── styles/global.css
+│   ├── tests/e2e/                     # E2E 测试 (14 个用例)
 │   ├── index.html
 │   ├── package.json
 │   └── vite.config.js
 │
-├── database/
-│   ├── init_database.sql              # 数据库初始化脚本 (建表+种子数据)
-│   └── queries.sql                    # 常用查询示例
+├── database/                          # 数据库脚本 (21 个)
+│   ├── init_database.sql              # 主初始化脚本
+│   ├── procedures.sql                 # 存储过程
+│   ├── views_and_triggers.sql         # 视图与触发器
+│   ├── queries.sql                    # 常用查询示例
+│   ├── migrate_v1_to_v2.sql           # v1→v2 迁移
+│   ├── rollback_v2_to_v1.sql          # v2→v1 回滚
+│   └── migrations/                    # 迁移脚本目录
 │
 └── README.md                          # 本文档
 ```
@@ -331,11 +338,11 @@ d:\789\
 
 | 环境 | 最低版本 | 说明 |
 |------|---------|------|
-| JDK | 17 | 需要配置 `JAVA_HOME` 环境变量 |
-| Node.js | 18 | 前端构建与开发服务器 |
+| JDK | 25 | 需要配置 `JAVA_HOME` 环境变量 |
+| Node.js | 18 | 前端构建与 BFF 运行 |
 | MySQL | 8.0 | 数据库服务，默认端口 3306 |
-| Maven | 3.6 | 后端项目构建（也可使用 Maven Wrapper） |
-| npm | 9.x | 前端依赖管理 |
+| Maven | 3.6 | 后端项目构建 |
+| npm | 9.x | 前端/BFF 依赖管理 |
 
 ---
 
@@ -362,7 +369,8 @@ mysql> source d:/789/database/init_database.sql
 
 该脚本会自动完成以下操作：
 - 创建 `lab_course_system` 数据库（utf8mb4 编码）
-- 创建 8 张数据表及外键约束和索引
+- 创建 12 张数据/安全表 + 1 张审计日志表，含外键约束和索引
+- 创建存储过程、视图与触发器
 - 插入种子数据：1 个管理员、3 位教师、5 名学生、5 间实验室、5 门课程
 
 #### 2.2 验证数据库
@@ -390,7 +398,10 @@ spring:
 $env:DB_URL="jdbc:mysql://localhost:3306/lab_course_system?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false"
 $env:DB_USERNAME="root"
 $env:DB_PASSWORD="your_password"
+$env:JWT_SECRET="replace-with-at-least-32-random-characters"
 ```
+
+`JWT_SECRET` 必须显式配置；测试环境由 Maven Surefire 单独注入，生产/本地启动不要使用弱默认密钥。
 
 ### 步骤 4：配置前端
 
@@ -419,7 +430,7 @@ server: {
 ```bash
 cd backend
 
-# 方式一：Maven 直接启动
+# 方式一：Maven 直接启动（开发模式）
 mvn spring-boot:run
 
 # 方式二：使用生产环境配置
@@ -437,6 +448,20 @@ Started LabCourseApplication in X.XXX seconds
 ```
 
 后端服务运行在 `http://localhost:8080`。
+
+### 启动 BFF 中间层 (推荐)
+
+```bash
+cd bff
+
+# 安装依赖（仅首次）
+npm install
+
+# 启动开发模式
+npm run dev
+```
+
+BFF 服务运行在 `http://localhost:4000`。
 
 ### 启动前端
 
@@ -470,7 +495,9 @@ VITE v5.4.11  ready in XXX ms
 | 学生 | S001 | 123456 | 王小明 (计算机科学与技术) |
 | 学生 | S002 | 123456 | 李小红 (软件工程) |
 
-> **注意**：首次启动时，`PasswordMigration` 会自动将数据库中的明文密码升级为 BCrypt 加密存储，后续启动不会重复迁移。
+> **注意**：
+> - 首次启动时，`PasswordMigration` 会自动将数据库中的明文密码升级为 BCrypt 加密存储，后续启动不会重复迁移。
+> - 默认使用 BFF 模式（`VITE_BFF_ENABLED=true`），前端请求通过 BFF 代理到后端。如需直连后端，修改 `frontend/.env.development` 中 `VITE_BFF_ENABLED=false`。
 
 ---
 
@@ -594,10 +621,11 @@ POST /api/admin/login
     "studentNo": "S001",
     "name": "王小明",
     "gender": "男",
-    "major": "计算机科学与技术",
-    "token": "eyJhbGciOiJIUzI1NiJ9...",
-    "tokenExpireTime": 1717372800000
+    "majorId": 1,
+    "collegeId": 1
   },
+  "accessToken": "eyJhbGciOiJIUzI1NiJ9...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiJ9...",
   "message": "登录成功"
 }
 ```
@@ -614,8 +642,8 @@ Authorization: Bearer <current-token>
 {
   "success": true,
   "message": "Token刷新成功",
-  "token": "<new-token>",
-  "expiresIn": 86400
+  "accessToken": "<new-access-token>",
+  "refreshToken": "<new-refresh-token>"
 }
 ```
 
@@ -745,21 +773,33 @@ PUT /api/attendance/update-status
 
 ### 测试概览
 
-| 项目 | 测试框架 | 测试用例数 | 覆盖范围 |
+| 项目 | 测试框架 | 测试文件数 | 覆盖范围 |
 |------|---------|-----------|---------|
-| 后端 | JUnit 5 | 73 | 签到、考勤、离线队列、密码、JWT、安全 |
-| 前端 | Vitest | 若干 | 密码校验器 |
+| 后端 | JUnit 5 + Mockito | 25 | 签到、考勤、密码、JWT、安全、数据库约束、服务层 |
+| BFF | Vitest | 9 | 认证、JWT验证、代理、错误处理、配置 |
+| 前端 | Vitest | 9 | 密码校验器、Token管理、请求、课表解析、离线签到 |
+| E2E | Playwright | 14 | 学院/专业 CRUD、级联下拉、表单提交、业务规则 |
 
 ### 后端测试用例明细
 
-| 测试类 | 用例数 | 覆盖内容 |
-|--------|--------|---------|
-| `AttendanceServiceTest` | 30 | 签到流程、考勤查询、状态修改、离线队列、数据一致性 |
-| `OfflineQueueRecoveryTest` | 16 | 离线队列恢复、数据损坏处理、并发访问、重试机制 |
-| `PasswordEncoderTest` | 10 | 密码编码、匹配验证、边界值测试 |
-| `JwtUtilTest` | 9 | Token 生成、解析、过期验证 |
-| `SecurityIntegrationTest` | 8 | 登录认证、权限控制、Token 安全 |
-| **总计** | **73** | |
+| 测试类 | 覆盖内容 |
+|--------|---------|
+| `AttendanceServiceTest` | 签到流程、考勤查询、状态修改、离线队列、数据一致性 (30 用例) |
+| `CollegeFieldTest` | 学院字段约束、partial update、空值/超长边界 (14 用例) |
+| `OfflineQueueRecoveryTest` | 离线队列恢复、数据损坏处理、并发访问 (16 用例) |
+| `PasswordEncoderTest` | 密码编码、匹配验证、边界值 (10 用例) |
+| `JwtUtilTest` | Token 生成、解析、过期验证 (9 用例) |
+| `SecurityIntegrationTest` | 登录认证、权限控制、Token 安全 (8 用例) |
+| `DatabaseConstraintTest` | 数据库外键约束验证 |
+| `DatabaseUniqueIndexTest` | 唯一索引约束验证 |
+| `DatabaseConcurrencyTest` | 并发场景数据库锁验证 |
+| 各 ServiceImpl 测试 (8个) | Admin/Student/Teacher/Course/Lab/Score/Selection/Major 服务层 |
+| `GlobalExceptionHandlerTest` | 全局异常处理 |
+| `AuthControllerTest` | 认证控制器 |
+| `LoginAttemptServiceTest` | 登录尝试限制 |
+| `AttendanceLoggingTest` | 考勤日志输出 |
+| `PasswordMigrationTest` | 密码自动迁移 |
+| **总计** | **25 个测试类** |
 
 ### 运行测试
 
@@ -773,9 +813,17 @@ mvn test -f backend/pom.xml
 # 运行指定测试类
 mvn test -f backend/pom.xml -Dtest=AttendanceServiceTest
 
-# 运行前端测试
-cd frontend
-npm test
+# BFF 测试
+cd bff && npm test
+
+# 前端单元测试
+cd frontend && npm test
+
+# 前端 E2E 测试
+cd frontend && npx playwright test
+npx playwright test --headed                # 有头模式
+npx playwright test tests/e2e/college/      # 按分类运行
+npx playwright show-report playwright-report # 查看报告
 ```
 
 ### 测试报告
@@ -790,14 +838,14 @@ npm test
 
 ```yaml
 流水线阶段:
-  1. Backend JUnit Tests  →  编译 + 数据库初始化 + 运行全部 73 个测试用例
+  1. Backend JUnit Tests  →  编译 + 数据库初始化 + 运行全部 331 个后端测试
   2. API Integration Tests →  集成测试验证
   3. Notify on Failure     →  失败时生成摘要报告
 ```
 
 CI 流程包含：
 - MySQL 8.0 服务容器
-- JDK 17 (Temurin) 环境
+- JDK 25 (Temurin) 环境
 - 自动发布 JUnit 测试报告
 - 上传测试报告为构建产物
 - 失败时自动通知
@@ -845,5 +893,5 @@ CI 流程包含：
 </p>
 
 <p align="center">
-  <sub>版本 1.0.0 | 最后更新 2026-06-12</sub>
+  <sub>版本 2.3.0 | 最后更新 2026-06-20</sub>
 </p>

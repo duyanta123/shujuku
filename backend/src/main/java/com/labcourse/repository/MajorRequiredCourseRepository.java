@@ -15,4 +15,7 @@ public interface MajorRequiredCourseRepository extends JpaRepository<MajorRequir
 
     @Transactional
     void deleteByMajorIdAndCourseId(Long majorId, Long courseId);
+
+    @Transactional
+    void deleteByCourseId(Long courseId);
 }

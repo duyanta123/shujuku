@@ -852,3 +852,104 @@ describe('Cookie 安全性验证', () => {
     expect(setCookieHeader).toBeTruthy()
   })
 })
+
+// ============================================================================
+// 16. Dual-Token 刷新 — bff_refresh_token Cookie 读取优先级
+// 验证 /api/auth/refresh 能正确读取 bff_refresh_token Cookie
+// 这是双Token模式的核心路径：refresh端点优先读取 bff_refresh_token，
+// 而非 bff_token（兼容旧版）或 Authorization Header
+// ============================================================================
+describe('POST /api/auth/refresh — bff_refresh_token Cookie 读取', () => {
+  it('bff_refresh_token Cookie 中的有效 Token 应被读取并转发', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/refresh',
+      cookies: { [config.jwt.refreshTokenCookieName]: validToken },
+    })
+
+    // 后端不在运行时返回502，但不应返回401（表示Token未被读取）
+    expect(response.statusCode).not.toBe(401)
+    expect([200, 502]).toContain(response.statusCode)
+  })
+
+  it('bff_refresh_token 应优先于 bff_token（二者同时存在时）', async () => {
+    const refreshToken = jwt.sign(
+      { userId: 99, username: 'refreshuser', role: 'student' },
+      config.jwt.secret,
+      { algorithm: 'HS256', expiresIn: '24h' }
+    )
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/refresh',
+      cookies: {
+        [config.jwt.refreshTokenCookieName]: refreshToken,
+        [config.jwt.cookieName]: validToken,
+      },
+    })
+
+    // 不应返回401 — Token被正确读取
+    expect(response.statusCode).not.toBe(401)
+    expect([200, 502]).toContain(response.statusCode)
+  })
+
+  it('bff_refresh_token Cookie 中过期 Token 应返回 401', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/refresh',
+      cookies: { [config.jwt.refreshTokenCookieName]: expiredToken },
+    })
+
+    expect(response.statusCode).toBe(401)
+    const body = response.json()
+    expect(body.success).toBe(false)
+    expect(body.message).toContain('过期')
+  })
+
+  it('bff_refresh_token Cookie 中无效 Token 应返回 401', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/refresh',
+      cookies: { [config.jwt.refreshTokenCookieName]: invalidToken },
+    })
+
+    expect(response.statusCode).toBe(401)
+    const body = response.json()
+    expect(body.success).toBe(false)
+  })
+
+  it('bff_refresh_token 过期时应清除 Cookie', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/refresh',
+      cookies: { [config.jwt.refreshTokenCookieName]: expiredToken },
+    })
+
+    const setCookieHeader = response.headers['set-cookie']
+    expect(setCookieHeader).toBeTruthy()
+  })
+
+  it('无 bff_refresh_token 但有 bff_token 时应回退到 bff_token', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/refresh',
+      cookies: { [config.jwt.cookieName]: validToken },
+    })
+
+    // 回退到 bff_token，不应返回401
+    expect(response.statusCode).not.toBe(401)
+    expect([200, 502]).toContain(response.statusCode)
+  })
+
+  it('bff_refresh_token 和 bff_token 都缺失时应有 Authorization Header 回退', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/auth/refresh',
+      headers: { Authorization: `Bearer ${validToken}` },
+    })
+
+    // Authorization Header 回退生效
+    expect(response.statusCode).not.toBe(401)
+    expect([200, 502]).toContain(response.statusCode)
+  })
+})

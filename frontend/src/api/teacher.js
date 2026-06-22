@@ -8,10 +8,15 @@ export function teacherLogin(data) {
   })
 }
 
-export function getTeacherList() {
+export function getTeacherList(collegeId) {
+  const params = {}
+  if (collegeId !== undefined && collegeId !== '') {
+    params.collegeId = collegeId
+  }
   return request({
     url: '/teacher/list',
-    method: 'get'
+    method: 'get',
+    params: Object.keys(params).length > 0 ? params : undefined
   })
 }
 
@@ -35,5 +40,12 @@ export function deleteTeacher(id) {
   return request({
     url: `/teacher/delete/${id}`,
     method: 'delete'
+  })
+}
+
+export function resetTeacherPassword(id) {
+  return request({
+    url: `/teacher/reset-password/${id}`,
+    method: 'post'
   })
 }

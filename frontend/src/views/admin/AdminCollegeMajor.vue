@@ -78,7 +78,6 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="createdAt" label="创建时间" width="180" />
             <el-table-column label="操作" width="180" align="center">
               <template #default="scope">
                 <el-button type="primary" size="small" text @click="handleEditMajor(scope.row)">编辑</el-button>

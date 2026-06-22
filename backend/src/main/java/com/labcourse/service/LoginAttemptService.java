@@ -1,12 +1,14 @@
 package com.labcourse.service;
 
+import com.labcourse.entity.LoginAttempt;
+import com.labcourse.repository.LoginAttemptRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Optional;
 
 @Service
 public class LoginAttemptService {
@@ -17,23 +19,26 @@ public class LoginAttemptService {
     private static final int LOCK_DURATION_MINUTES = 30;
     private static final int ATTEMPT_WINDOW_MINUTES = 15;
 
-    private final ConcurrentHashMap<String, LoginAttempt> attemptsCache = new ConcurrentHashMap<>();
+    @Autowired
+    private LoginAttemptRepository loginAttemptRepository;
 
     public LoginResult checkLoginAttempt(String key) {
-        LoginAttempt attempt = attemptsCache.get(key);
+        Optional<LoginAttempt> opt = loginAttemptRepository.findById(key);
 
-        if (attempt == null) {
+        if (opt.isEmpty()) {
             return LoginResult.ALLOWED;
         }
 
-        if (attempt.isLocked()) {
-            long remainingMinutes = attempt.getRemainingLockMinutes();
+        LoginAttempt attempt = opt.get();
+
+        if (isLocked(attempt)) {
+            long remainingMinutes = getRemainingLockMinutes(attempt);
             logger.warn("账号 {} 已被锁定，剩余 {} 分钟", key, remainingMinutes);
             return LoginResult.locked(remainingMinutes);
         }
 
-        if (attempt.isWindowExpired()) {
-            attemptsCache.remove(key);
+        if (isWindowExpired(attempt)) {
+            loginAttemptRepository.deleteById(key);
             return LoginResult.ALLOWED;
         }
 
@@ -41,64 +46,56 @@ public class LoginAttemptService {
     }
 
     public void recordFailedAttempt(String key) {
-        LoginAttempt attempt = attemptsCache.computeIfAbsent(key, k -> new LoginAttempt());
-        attempt.recordFailure();
+        LoginAttempt attempt = loginAttemptRepository.findById(key).orElseGet(() -> {
+            LoginAttempt newAttempt = new LoginAttempt();
+            newAttempt.setAttemptKey(key);
+            newAttempt.setAttempts(0);
+            newAttempt.setFirstAttemptTime(LocalDateTime.now());
+            return newAttempt;
+        });
+
+        if (isWindowExpired(attempt)) {
+            attempt.setAttempts(0);
+            attempt.setFirstAttemptTime(LocalDateTime.now());
+            attempt.setLockUntil(null);
+        }
+
+        attempt.setAttempts(attempt.getAttempts() + 1);
 
         if (attempt.getAttempts() >= MAX_ATTEMPTS) {
-            attempt.lock(LOCK_DURATION_MINUTES);
+            attempt.setLockUntil(LocalDateTime.now().plusMinutes(LOCK_DURATION_MINUTES));
             logger.warn("账号 {} 登录失败 {} 次，已锁定 {} 分钟", key, MAX_ATTEMPTS, LOCK_DURATION_MINUTES);
         }
+
+        loginAttemptRepository.save(attempt);
     }
 
     public void resetAttempts(String key) {
-        attemptsCache.remove(key);
+        loginAttemptRepository.deleteById(key);
         logger.info("账号 {} 登录成功，已重置失败计数", key);
     }
 
     public int getRemainingAttempts(String key) {
-        LoginAttempt attempt = attemptsCache.get(key);
-        if (attempt == null || attempt.isWindowExpired()) {
+        Optional<LoginAttempt> opt = loginAttemptRepository.findById(key);
+        if (opt.isEmpty() || isWindowExpired(opt.get())) {
             return MAX_ATTEMPTS;
         }
-        return Math.max(0, MAX_ATTEMPTS - attempt.getAttempts());
+        return Math.max(0, MAX_ATTEMPTS - opt.get().getAttempts());
     }
 
-    private static class LoginAttempt {
-        private final AtomicInteger attempts = new AtomicInteger(0);
-        private volatile LocalDateTime firstAttemptTime;
-        private volatile LocalDateTime lockUntil;
+    private boolean isLocked(LoginAttempt attempt) {
+        return attempt.getLockUntil() != null && LocalDateTime.now().isBefore(attempt.getLockUntil());
+    }
 
-        void recordFailure() {
-            LocalDateTime now = LocalDateTime.now();
-            if (firstAttemptTime == null || isWindowExpired()) {
-                attempts.set(0);
-                firstAttemptTime = now;
-            }
-            attempts.incrementAndGet();
-        }
+    private boolean isWindowExpired(LoginAttempt attempt) {
+        return attempt.getFirstAttemptTime() != null
+                && LocalDateTime.now().isAfter(attempt.getFirstAttemptTime().plusMinutes(ATTEMPT_WINDOW_MINUTES));
+    }
 
-        void lock(int durationMinutes) {
-            lockUntil = LocalDateTime.now().plusMinutes(durationMinutes);
-        }
-
-        boolean isLocked() {
-            return lockUntil != null && LocalDateTime.now().isBefore(lockUntil);
-        }
-
-        boolean isWindowExpired() {
-            return firstAttemptTime != null
-                    && LocalDateTime.now().isAfter(firstAttemptTime.plusMinutes(ATTEMPT_WINDOW_MINUTES));
-        }
-
-        long getRemainingLockMinutes() {
-            if (lockUntil == null) return 0;
-            long remaining = java.time.Duration.between(LocalDateTime.now(), lockUntil).toMinutes();
-            return Math.max(0, remaining);
-        }
-
-        int getAttempts() {
-            return attempts.get();
-        }
+    private long getRemainingLockMinutes(LoginAttempt attempt) {
+        if (attempt.getLockUntil() == null) return 0;
+        long remaining = java.time.Duration.between(LocalDateTime.now(), attempt.getLockUntil()).toMinutes();
+        return Math.max(0, remaining);
     }
 
     public static class LoginResult {

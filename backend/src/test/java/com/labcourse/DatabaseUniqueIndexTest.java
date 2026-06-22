@@ -147,6 +147,9 @@ public class DatabaseUniqueIndexTest {
     @Transactional
     @DisplayName("唯一约束：同学生同课程重复选课应被拒绝")
     void duplicateSelection_ShouldBeRejected() {
+        selectionRepository.findByStudentIdAndCourseId(2L, 1L).ifPresent(selectionRepository::delete);
+        entityManager.flush();
+
         // 先创建一条选课记录（利用种子数据中的学生和课程）
         Selection first = new Selection();
         first.setStudentId(2L);

@@ -2,6 +2,12 @@ spring:
   application:
     name: lab-course-system
 
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 2MB
+      max-request-size: 2MB
+
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/lab_course_system?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false}
     username: ${DB_USERNAME:root}

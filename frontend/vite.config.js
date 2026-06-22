@@ -29,6 +29,7 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: 'jsdom',
       globals: true,
+      exclude: ['node_modules/**', 'dist/**', 'tests/e2e/**', 'playwright-report/**', 'test-results/**'],
     }
   }
 })

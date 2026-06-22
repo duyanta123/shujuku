@@ -52,21 +52,25 @@ SELECT
     s.student_no,
     s.name,
     s.gender,
-    s.major,
+    m.name AS major,
     sc.select_time,
-    sc.score,
-    sc.attendance_status
+    score.score,
+    a.attendance_status
 FROM selection sc
 JOIN student s ON sc.student_id = s.id
+LEFT JOIN major m ON s.major_id = m.id
+LEFT JOIN score ON sc.student_id = score.student_id AND sc.course_id = score.course_id
+LEFT JOIN attendance a ON sc.student_id = a.student_id AND sc.course_id = a.course_id
 WHERE sc.course_id = 1
 ORDER BY s.student_no;
 
 -- 5. 统计各专业学生人数
 SELECT
-    major,
+    m.name AS major,
     COUNT(*) AS student_count
-FROM student
-GROUP BY major
+FROM student s
+LEFT JOIN major m ON s.major_id = m.id
+GROUP BY m.name
 ORDER BY student_count DESC;
 
 -- 6. 统计各职称教师人数

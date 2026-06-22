@@ -2,6 +2,7 @@ package com.labcourse.controller;
 
 import com.labcourse.entity.Course;
 import com.labcourse.repository.CourseRepository;
+import com.labcourse.repository.SelectionRepository;
 import com.labcourse.service.ScoreService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -23,6 +24,9 @@ public class ScoreController {
     @Autowired
     private CourseRepository courseRepository;
 
+    @Autowired
+    private SelectionRepository selectionRepository;
+
     @PostMapping("/add")
     public ResponseEntity<Map<String, Object>> add(@RequestBody Map<String, Object> data) {
         Map<String, Object> result = new HashMap<>();
@@ -38,9 +42,18 @@ public class ScoreController {
             return ResponseEntity.badRequest().body(result);
         }
 
-        Long studentId = Long.valueOf(studentIdObj.toString());
-        Long courseId = Long.valueOf(courseIdObj.toString());
-        BigDecimal score = new BigDecimal(scoreObj.toString());
+        Long studentId;
+        Long courseId;
+        BigDecimal score;
+        try {
+            studentId = Long.valueOf(studentIdObj.toString());
+            courseId = Long.valueOf(courseIdObj.toString());
+            score = new BigDecimal(scoreObj.toString());
+        } catch (NumberFormatException e) {
+            result.put("success", false);
+            result.put("message", "Invalid numeric parameter");
+            return ResponseEntity.badRequest().body(result);
+        }
 
         // 成绩值校验：0-100
         if (score.compareTo(BigDecimal.ZERO) < 0 || score.compareTo(new BigDecimal("100")) > 0) {
@@ -63,6 +76,13 @@ public class ScoreController {
         if (course == null || !course.getTeacherId().equals(currentTeacherId)) {
             result.put("success", false);
             result.put("message", "无权为此课程的学生录入成绩");
+            return ResponseEntity.status(403).body(result);
+        }
+
+        // 验证学生是否已选修该课程
+        if (selectionRepository.findByStudentIdAndCourseId(studentId, courseId).isEmpty()) {
+            result.put("success", false);
+            result.put("message", "该学生未选修此课程，无法录入成绩");
             return ResponseEntity.status(403).body(result);
         }
 

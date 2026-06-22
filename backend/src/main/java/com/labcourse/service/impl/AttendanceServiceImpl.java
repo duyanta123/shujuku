@@ -12,8 +12,17 @@ import com.labcourse.service.AttendanceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.SimpleJdbcCall;
+import org.springframework.jdbc.core.SqlParameter;
+import org.springframework.jdbc.core.SqlOutParameter;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.sql.Timestamp;
+import java.sql.Types;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -39,6 +48,9 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Autowired
     private SelectionRepository selectionRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     // 课程节次 → 上课开始时间映射
     private static final Map<Integer, LocalTime> PERIOD_START_TIMES = new LinkedHashMap<>();
@@ -113,7 +125,7 @@ public class AttendanceServiceImpl implements AttendanceService {
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = DataIntegrityViolationException.class)
     public Map<String, Object> checkIn(Long studentId, Long courseId) {
         long threadId = Thread.currentThread().getId();
         log.info("[checkIn] 线程-{} | 开始签到 | studentId={}, courseId={}, time={}",
@@ -144,30 +156,10 @@ public class AttendanceServiceImpl implements AttendanceService {
             result.put("message", "学生不存在");
             return result;
         }
-        log.debug("[checkIn] 线程-{} | 学生已加载 | studentName={}, major={}",
-                threadId, student.getName(), student.getMajor());
+        log.debug("[checkIn] 线程-{} | 学生已加载 | studentName={}, majorId={}",
+                threadId, student.getName(), student.getMajorId());
 
-        // 3. 检查是否已签到（悲观写锁防止并发竞态条件）
-        log.debug("[checkIn] 线程-{} | 获取悲观写锁 | studentId={}, courseId={}, date={}",
-                threadId, studentId, courseId, today);
-        long lockStart = System.currentTimeMillis();
-        Optional<Attendance> existingOpt = attendanceRepository
-                .findByStudentIdAndCourseIdAndAttendanceDateForUpdate(studentId, courseId, today);
-        long lockEnd = System.currentTimeMillis();
-        log.debug("[checkIn] 线程-{} | 悲观锁获取完成 | 耗时={}ms, hasExisting={}",
-                threadId, lockEnd - lockStart, existingOpt.isPresent());
-
-        if (existingOpt.isPresent()) {
-            Attendance existing = existingOpt.get();
-            log.info("[checkIn] 线程-{} | 分支-重复签到 | studentId={}, courseId={}, existingStatus={}, result=success:false",
-                    threadId, studentId, courseId, existing.getAttendanceStatus().name());
-            result.put("success", false);
-            result.put("message", "今日已签到，无需重复签到");
-            result.put("status", existing.getAttendanceStatus().name());
-            return result;
-        }
-
-        // 4. 解析课程时间，找到今天对应的上课时间
+        // 3. 解析课程时间，找到今天对应的上课时间
         String courseTime = course.getCourseTime();
         if (courseTime == null || courseTime.isEmpty()) {
             log.warn("[checkIn] 线程-{} | 分支-课程时间未设置 | courseId={}, courseName={}, result=success:false",
@@ -245,6 +237,81 @@ public class AttendanceServiceImpl implements AttendanceService {
                     threadId, studentId, courseId, minutesBeforeStart);
         }
 
+        // 5. 调用存储过程检查签到状态（替代悲观锁防重复）
+        log.debug("[checkIn] 线程-{} | 调用存储过程 | studentId={}, courseId={}, checkTime={}",
+                threadId, studentId, courseId, now);
+        Timestamp checkTimestamp = Timestamp.valueOf(now);
+
+        /*
+         * 存储过程 proc_check_attendance_status 参数类型映射：
+         *   p_student_id   BIGINT(IN)   → Java: Long         → JDBC: Types.BIGINT
+         *   p_course_id    BIGINT(IN)   → Java: Long         → JDBC: Types.BIGINT
+         *   p_check_time   DATETIME(IN) → Java: Timestamp    → JDBC: Types.TIMESTAMP
+         *   p_status       VARCHAR(OUT) → Java: String       → JDBC: Types.VARCHAR
+         *   p_message      VARCHAR(OUT) → Java: String       → JDBC: Types.VARCHAR
+         */
+        SimpleJdbcCall jdbcCall = new SimpleJdbcCall(jdbcTemplate)
+                .withProcedureName("proc_check_attendance_status")
+                .declareParameters(
+                        new SqlParameter("p_student_id", Types.BIGINT),
+                        new SqlParameter("p_course_id", Types.BIGINT),
+                        new SqlParameter("p_check_time", Types.TIMESTAMP),
+                        new SqlOutParameter("p_status", Types.VARCHAR),
+                        new SqlOutParameter("p_message", Types.VARCHAR)
+                );
+
+        Map<String, Object> inParams = new HashMap<>();
+        inParams.put("p_student_id", studentId);
+        inParams.put("p_course_id", courseId);
+        inParams.put("p_check_time", checkTimestamp);
+
+        Map<String, Object> procResult;
+        try {
+            procResult = jdbcCall.execute(inParams);
+        } catch (DataAccessException e) {
+            log.error("[checkIn] 线程-{} | 分支-数据库异常 | studentId={}, courseId={}, error={}",
+                    threadId, studentId, courseId, e.getMessage(), e);
+            result.put("success", false);
+            result.put("message", "系统繁忙，请稍后重试");
+            return result;
+        } catch (Exception e) {
+            log.error("[checkIn] 线程-{} | 分支-存储过程异常 | studentId={}, courseId={}, error={}",
+                    threadId, studentId, courseId, e.getMessage(), e);
+            result.put("success", false);
+            result.put("message", "系统繁忙，请稍后重试");
+            return result;
+        }
+
+        String pStatus = (String) procResult.get("p_status");
+        String pMessage = (String) procResult.get("p_message");
+        log.info("[checkIn] 线程-{} | 存储过程返回 | p_status={}, p_message={}",
+                threadId, pStatus, pMessage);
+
+        if ("ERROR".equals(pStatus)) {
+            log.warn("[checkIn] 线程-{} | 分支-存储过程错误 | studentId={}, courseId={}, message={}, result=success:false",
+                    threadId, studentId, courseId, pMessage);
+            result.put("success", false);
+            result.put("message", pMessage != null ? pMessage : "签到服务异常");
+            return result;
+        }
+
+        if ("DUPLICATE".equals(pStatus)) {
+            log.info("[checkIn] 线程-{} | 分支-重复签到(存储过程) | studentId={}, courseId={}, message={}, result=success:false",
+                    threadId, studentId, courseId, pMessage);
+            result.put("success", false);
+            result.put("message", pMessage != null ? pMessage : "今日已签到");
+            return result;
+        }
+
+        // 默认处理：存储过程返回了非预期状态码
+        if (!isSuccessfulProcedureStatus(pStatus)) {
+            log.warn("[checkIn] 线程-{} | 分支-存储过程返回非预期状态 | studentId={}, courseId={}, pStatus={}, pMessage={}",
+                    threadId, studentId, courseId, pStatus, pMessage);
+            result.put("success", false);
+            result.put("message", "系统繁忙，请稍后重试");
+            return result;
+        }
+
         // 6. 创建签到记录
         try {
             Attendance attendance = new Attendance();
@@ -252,7 +319,8 @@ public class AttendanceServiceImpl implements AttendanceService {
             attendance.setCourseId(courseId);
             attendance.setAttendanceStatus(status);
             attendance.setAttendanceDate(today);
-            attendanceRepository.save(attendance);
+            attendance.setCheckInTime(now);
+            attendanceRepository.saveAndFlush(attendance);
 
             log.info("[checkIn] 线程-{} | 分支-签到成功 | studentId={}, courseId={}, status={}, reason={}, recordId={}",
                     threadId, studentId, courseId, status.name(), statusReason, attendance.getId());
@@ -264,12 +332,30 @@ public class AttendanceServiceImpl implements AttendanceService {
             result.put("studentName", student.getName());
             result.put("checkInTime", now.toString());
             return result;
+        } catch (DataIntegrityViolationException e) {
+            log.info("[checkIn] thread-{} | duplicate check-in(unique constraint) | studentId={}, courseId={}, result=success:false",
+                    threadId, studentId, courseId);
+            result.put("success", false);
+            result.put("message", "今日已签到");
+            return result;
         } catch (Exception e) {
             log.error("[checkIn] 线程-{} | 分支-数据库异常 | studentId={}, courseId={}, error={}",
                     threadId, studentId, courseId, e.getMessage(), e);
             result.put("success", false);
-            result.put("message", "签到失败: " + e.getMessage());
+            result.put("message", "签到失败");
             return result;
+        }
+    }
+
+    private boolean isSuccessfulProcedureStatus(String pStatus) {
+        if (pStatus == null || "OK".equals(pStatus)) {
+            return true;
+        }
+        try {
+            AttendanceStatus.valueOf(pStatus);
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
         }
     }
 
@@ -324,7 +410,7 @@ public class AttendanceServiceImpl implements AttendanceService {
             item.put("studentId", student.getId());
             item.put("studentNo", student.getStudentNo());
             item.put("studentName", student.getName());
-            item.put("major", student.getMajor());
+            item.put("major", student.getMajorId());
 
             Attendance att = attendanceMap.get(studentId);
             if (att != null) {
@@ -360,6 +446,20 @@ public class AttendanceServiceImpl implements AttendanceService {
         }
 
         Attendance attendance = opt.get();
+
+        // 验证教师是否有权修改此课程的考勤记录
+        Course course = courseRepository.findById(attendance.getCourseId()).orElse(null);
+        if (course == null) {
+            result.put("success", false);
+            result.put("message", "课程不存在");
+            return result;
+        }
+        if (!course.getTeacherId().equals(teacherId)) {
+            result.put("success", false);
+            result.put("message", "无权修改此课程的考勤记录");
+            return result;
+        }
+
         AttendanceStatus currentStatus = attendance.getAttendanceStatus();
 
         // 仅允许从"缺勤"修改为"请假"
@@ -417,7 +517,7 @@ public class AttendanceServiceImpl implements AttendanceService {
             Student student = studentMap.get(record.getStudentId());
             item.put("studentNo", student != null ? student.getStudentNo() : "");
             item.put("studentName", student != null ? student.getName() : "");
-            item.put("major", student != null ? student.getMajor() : "");
+            item.put("major", student != null ? student.getMajorId() : "");
             item.put("courseName", course != null ? course.getCourseName() : "");
             item.put("attendanceDate", record.getAttendanceDate() != null ? record.getAttendanceDate().toString() : "");
             item.put("status", record.getAttendanceStatus().name());

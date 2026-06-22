@@ -4,20 +4,19 @@ import com.labcourse.entity.*;
 import com.labcourse.repository.*;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
-/**
- * 数据库外键约束测试
- * 验证 ON DELETE RESTRICT / 外键约束在数据库层面生效
- * 课程考点：参照完整性、外键约束
- */
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 @SpringBootTest
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class DatabaseConstraintTest {
 
     @Autowired private CollegeRepository collegeRepository;
@@ -25,6 +24,7 @@ public class DatabaseConstraintTest {
     @Autowired private StudentRepository studentRepository;
     @Autowired private TeacherRepository teacherRepository;
     @Autowired private CourseRepository courseRepository;
+    @Autowired private LabRepository labRepository;
     @Autowired private SelectionRepository selectionRepository;
     @Autowired private ScoreRepository scoreRepository;
     @Autowired private AttendanceRepository attendanceRepository;
@@ -32,97 +32,147 @@ public class DatabaseConstraintTest {
     @PersistenceContext
     private EntityManager entityManager;
 
-    /**
-     * Test 1: 删除有关联专业的学院 → 被 RDBMS 拒绝
-     * 利用种子数据中的 college_id=1（该学院下存在专业）
-     */
     @Test
-    @Order(1)
     @Transactional
-    @DisplayName("外键约束：删除有关联专业的学院应被拒绝")
+    @DisplayName("FK: deleting college with majors is rejected")
     void deleteCollegeWithAssociatedMajors_ShouldBeRejected() {
+        TestGraph graph = createGraph("college-major");
+
         assertThrows(Exception.class, () -> {
-            collegeRepository.deleteById(1L);
+            collegeRepository.deleteById(graph.collegeId);
             entityManager.flush();
-        }, "删除有关联专业的学院应该抛出外键约束异常");
+        });
     }
 
-    /**
-     * Test 2: 删除有关联学生的专业 → 被拒绝
-     * 利用种子数据中 college_id=1 下的 major（该专业下有学生）
-     */
     @Test
-    @Order(2)
     @Transactional
-    @DisplayName("外键约束：删除有关联学生的专业应被拒绝")
+    @DisplayName("FK: deleting major with students is rejected")
     void deleteMajorWithAssociatedStudents_ShouldBeRejected() {
+        TestGraph graph = createGraph("major-student");
+
         assertThrows(Exception.class, () -> {
-            majorRepository.deleteById(1L);
+            majorRepository.deleteById(graph.majorId);
             entityManager.flush();
-        }, "删除有关联学生的专业应该抛出外键约束异常");
+        });
     }
 
-    /**
-     * Test 3: 删除有选课记录的学生 → 被拒绝
-     * 利用种子数据中 student_id=1 (S001)，该生存在选课记录
-     */
     @Test
-    @Order(3)
     @Transactional
-    @DisplayName("外键约束：删除有选课记录的学生应被拒绝")
+    @DisplayName("FK: deleting student with selections is rejected")
     void deleteStudentWithSelections_ShouldBeRejected() {
-        assertThrows(Exception.class, () -> {
-            studentRepository.deleteById(1L);
-            entityManager.flush();
-        }, "删除有选课记录的学生应该抛出外键约束异常");
-    }
-
-    /**
-     * Test 4: 删除有成绩记录的学生 → 被拒绝
-     * 利用种子数据中 student_id=1 (S001)，该生存在成绩记录
-     */
-    @Test
-    @Order(4)
-    @Transactional
-    @DisplayName("外键约束：删除有成绩记录的学生应被拒绝")
-    void deleteStudentWithScores_ShouldBeRejected() {
-        assertThrows(Exception.class, () -> {
-            studentRepository.deleteById(1L);
-            entityManager.flush();
-        }, "删除有成绩记录的学生应该抛出外键约束异常");
-    }
-
-    /**
-     * Test 5: 删除有考勤记录的学生 → 被拒绝
-     * 利用种子数据中 student_id=1 (S001)，该生存在考勤记录
-     */
-    @Test
-    @Order(5)
-    @Transactional
-    @DisplayName("外键约束：删除有考勤记录的学生应被拒绝")
-    void deleteStudentWithAttendance_ShouldBeRejected() {
-        assertThrows(Exception.class, () -> {
-            studentRepository.deleteById(1L);
-            entityManager.flush();
-        }, "删除有考勤记录的学生应该抛出外键约束异常");
-    }
-
-    /**
-     * Test 6: 插入不存在的外键值 → 被拒绝
-     * 尝试插入 student_id=999999L 的选课记录，该学生不存在
-     */
-    @Test
-    @Order(6)
-    @Transactional
-    @DisplayName("外键约束：插入不存在的外键值应被拒绝")
-    void insertSelectionWithNonExistentStudent_ShouldBeRejected() {
+        TestGraph graph = createGraph("student-selection");
         Selection selection = new Selection();
-        selection.setStudentId(999999L);
-        selection.setCourseId(1L);
+        selection.setStudentId(graph.studentId);
+        selection.setCourseId(graph.courseId);
+        selectionRepository.saveAndFlush(selection);
+
+        assertThrows(Exception.class, () -> {
+            studentRepository.deleteById(graph.studentId);
+            entityManager.flush();
+        });
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("FK: deleting student with scores is rejected")
+    void deleteStudentWithScores_ShouldBeRejected() {
+        TestGraph graph = createGraph("student-score");
+        Score score = new Score();
+        score.setStudentId(graph.studentId);
+        score.setCourseId(graph.courseId);
+        score.setScore(new BigDecimal("95.00"));
+        scoreRepository.saveAndFlush(score);
+
+        assertThrows(Exception.class, () -> {
+            studentRepository.deleteById(graph.studentId);
+            entityManager.flush();
+        });
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("FK: deleting student with attendance is rejected")
+    void deleteStudentWithAttendance_ShouldBeRejected() {
+        TestGraph graph = createGraph("student-attendance");
+        Attendance attendance = new Attendance();
+        attendance.setStudentId(graph.studentId);
+        attendance.setCourseId(graph.courseId);
+        attendance.setAttendanceStatus(AttendanceStatus.出勤);
+        attendance.setAttendanceDate(LocalDate.now());
+        attendance.setCheckInTime(LocalDateTime.now());
+        attendanceRepository.saveAndFlush(attendance);
+
+        assertThrows(Exception.class, () -> {
+            studentRepository.deleteById(graph.studentId);
+            entityManager.flush();
+        });
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("FK: inserting selection with missing student is rejected")
+    void insertSelectionWithNonExistentStudent_ShouldBeRejected() {
+        TestGraph graph = createGraph("missing-student");
+        Selection selection = new Selection();
+        selection.setStudentId(999999999L);
+        selection.setCourseId(graph.courseId);
 
         assertThrows(Exception.class, () -> {
             selectionRepository.save(selection);
             entityManager.flush();
-        }, "插入不存在学生ID的选课记录应该抛出外键约束异常");
+        });
     }
+
+    private TestGraph createGraph(String suffix) {
+        String unique = Long.toString(System.nanoTime(), 36);
+
+        College college = new College();
+        college.setName("c-college-" + unique);
+        college.setStatus("ACTIVE");
+        college = collegeRepository.saveAndFlush(college);
+
+        Major major = new Major();
+        major.setName("c-major-" + unique);
+        major.setCollegeId(college.getId());
+        major.setStatus("ACTIVE");
+        major = majorRepository.saveAndFlush(major);
+
+        Student student = new Student();
+        student.setStudentNo("CS" + System.nanoTime());
+        student.setName("c-student-" + unique);
+        student.setGender("男");
+        student.setCollegeId(college.getId());
+        student.setMajorId(major.getId());
+        student.setPassword("$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5Eh");
+        student = studentRepository.saveAndFlush(student);
+
+        Teacher teacher = new Teacher();
+        teacher.setTeacherNo("CT" + System.nanoTime());
+        teacher.setName("c-teacher-" + unique);
+        teacher.setTitle("Professor");
+        teacher.setCollegeId(college.getId());
+        teacher.setPassword("$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5Eh");
+        teacher = teacherRepository.saveAndFlush(teacher);
+
+        Lab lab = new Lab();
+        lab.setLabName("c-lab-" + unique);
+        lab.setLocation("constraint-room");
+        lab.setCapacity(30);
+        lab.setCollegeId(college.getId());
+        lab = labRepository.saveAndFlush(lab);
+
+        Course course = new Course();
+        course.setCourseName("c-course-" + unique);
+        course.setTeacherId(teacher.getId());
+        course.setLabId(lab.getId());
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(30);
+        course.setCollegeId(college.getId());
+        course.setCourseType("ELECTIVE");
+        course = courseRepository.saveAndFlush(course);
+
+        return new TestGraph(college.getId(), major.getId(), student.getId(), course.getId());
+    }
+
+    private record TestGraph(Long collegeId, Long majorId, Long studentId, Long courseId) {}
 }

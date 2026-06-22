@@ -32,10 +32,15 @@ public class CourseController {
     }
 
     @GetMapping("/list/simple")
-    public ResponseEntity<Map<String, Object>> listSimple() {
+    public ResponseEntity<Map<String, Object>> listSimple(@RequestParam(required = false) Long collegeId) {
         Map<String, Object> result = new HashMap<>();
+        if (collegeId != null && collegeId <= 0) {
+            result.put("success", true);
+            result.put("data", java.util.Collections.emptyList());
+            return ResponseEntity.ok(result);
+        }
         result.put("success", true);
-        result.put("data", courseService.list());
+        result.put("data", courseService.list(collegeId));
         return ResponseEntity.ok(result);
     }
 

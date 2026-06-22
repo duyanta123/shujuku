@@ -23,18 +23,18 @@ public class Teacher {
     private String password;
     
     // Security fix (HIGH-001): Refresh Token 用于Token轮转
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @Column(name = "refresh_token", length = 512)
     private String refreshToken;
     
     @Column(name = "title", length = 50)
     private String title;
     
-    @Size(max = 100)
-    @Column(name = "college", length = 100)
-    private String college;
-    
     @Column(name = "college_id")
     private Long collegeId;
+
+    @Column(name = "avatar_url", length = 500)
+    private String avatarUrl;
     
     @Column(name = "created_at")
     private LocalDateTime createdAt;
@@ -62,11 +62,11 @@ public class Teacher {
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
 
-    public String getCollege() { return college; }
-    public void setCollege(String college) { this.college = college; }
-
     public Long getCollegeId() { return collegeId; }
     public void setCollegeId(Long collegeId) { this.collegeId = collegeId; }
+
+    public String getAvatarUrl() { return avatarUrl; }
+    public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

@@ -12,7 +12,6 @@ USE lab_course_system;
 -- 删除已有的表（如果存在，按外键依赖逆序删除）
 DROP TABLE IF EXISTS college_status_log;
 DROP TABLE IF EXISTS major_required_course;
-DROP TABLE IF EXISTS course_teacher;
 DROP TABLE IF EXISTS attendance;
 DROP TABLE IF EXISTS score;
 DROP TABLE IF EXISTS selection;
@@ -23,6 +22,7 @@ DROP TABLE IF EXISTS teacher;
 DROP TABLE IF EXISTS student;
 DROP TABLE IF EXISTS college;
 DROP TABLE IF EXISTS admin;
+DROP TABLE IF EXISTS login_attempts;
 
 -- ============================================================
 -- 1. 学院表（新）
@@ -51,20 +51,17 @@ CREATE TABLE major (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='专业表';
 
 -- ============================================================
--- 3. 学生表（改造：新增 college_id/major_id 外键，保留原字符串列兼容过渡）
+-- 3. 学生表（改造：新增 college_id/major_id 外键）
 -- ============================================================
 CREATE TABLE student (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     student_no VARCHAR(20) NOT NULL UNIQUE COMMENT '学号',
     name VARCHAR(50) NOT NULL COMMENT '姓名',
     gender VARCHAR(10) COMMENT '性别',
-    -- @deprecated 计划 v2.1 删除此字段，使用 college_id 外键
-    major VARCHAR(100) COMMENT '专业（过渡字段，逐步迁移至 major_id）',
-    -- @deprecated 计划 v2.1 删除此字段，使用 college_id 外键
-    college VARCHAR(100) COMMENT '学院（过渡字段，@deprecated 计划 v2.1 删除，全面迁移至 college_id）',
     college_id BIGINT COMMENT '学院ID（新外键）',
     major_id BIGINT COMMENT '专业ID（新外键）',
     password VARCHAR(100) NOT NULL COMMENT '密码',
+    avatar_url VARCHAR(500) COMMENT '头像URL',
     refresh_token VARCHAR(512) COMMENT 'Refresh Token',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -76,17 +73,16 @@ CREATE TABLE student (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生表';
 
 -- ============================================================
--- 4. 教师表（改造：新增 college_id 外键，保留原字符串列兼容过渡）
+-- 4. 教师表（改造：新增 college_id 外键）
 -- ============================================================
 CREATE TABLE teacher (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     teacher_no VARCHAR(20) NOT NULL UNIQUE COMMENT '工号',
     name VARCHAR(50) NOT NULL COMMENT '姓名',
     title VARCHAR(50) COMMENT '职称',
-    -- @deprecated 计划 v2.1 删除此字段，使用 college_id 外键
-    college VARCHAR(100) COMMENT '学院（过渡字段，@deprecated 计划 v2.1 删除，全面迁移至 college_id）',
     college_id BIGINT COMMENT '学院ID（新外键）',
     password VARCHAR(100) NOT NULL COMMENT '密码',
+    avatar_url VARCHAR(500) COMMENT '头像URL',
     refresh_token VARCHAR(512) COMMENT 'Refresh Token',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -101,19 +97,20 @@ CREATE TABLE admin (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     username VARCHAR(50) NOT NULL UNIQUE COMMENT '用户名',
     password VARCHAR(100) NOT NULL COMMENT '密码',
+    avatar_url VARCHAR(500) COMMENT '头像URL',
+    refresh_token VARCHAR(512) COMMENT 'Refresh Token',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='管理员表';
 
 -- ============================================================
--- 6. 实验室表（不变）
+-- 6. 实验室表（改造：新增 college_id 外键）
 -- ============================================================
 CREATE TABLE lab (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     lab_name VARCHAR(100) NOT NULL COMMENT '实验室名称',
     location VARCHAR(200) COMMENT '地点',
     capacity INT COMMENT '容量',
-    college VARCHAR(100) COMMENT '学院（过渡字段，@deprecated 计划 v2.1 删除，全面迁移至 college_id）',
     college_id BIGINT COMMENT '学院ID（新外键）',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -121,7 +118,7 @@ CREATE TABLE lab (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='实验室表';
 
 -- ============================================================
--- 7. 课程表（改造：新增 college_id 外键、course_type 分类，保留原 college 字符串列）
+-- 7. 课程表（改造：新增 college_id 外键、course_type 分类）
 -- ============================================================
 CREATE TABLE course (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -130,8 +127,6 @@ CREATE TABLE course (
     lab_id BIGINT COMMENT '实验室ID',
     course_time VARCHAR(100) COMMENT '上课时间',
     max_count INT DEFAULT 30 COMMENT '最大人数',
-    -- @deprecated 计划 v2.1 删除此字段，使用 college_id 外键
-    college VARCHAR(100) COMMENT '学院（过渡字段，@deprecated 计划 v2.1 删除，全面迁移至 college_id）',
     college_id BIGINT COMMENT '学院ID（新外键）',
     course_type ENUM('REQUIRED', 'ELECTIVE') NOT NULL DEFAULT 'ELECTIVE' COMMENT '课程类型：REQUIRED必修/ELECTIVE选修',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -209,20 +204,6 @@ CREATE TABLE major_required_course (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='专业-必修课关联表';
 
 -- ============================================================
--- 12. 课程-教师关联表（新，替代原 course.teacher_id 单一绑定）
--- ============================================================
-CREATE TABLE course_teacher (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    course_id BIGINT NOT NULL COMMENT '课程ID',
-    teacher_id BIGINT NOT NULL UNIQUE COMMENT '教师ID（全局唯一，一名教师仅教一门课）',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_ct_course FOREIGN KEY (course_id) REFERENCES course(id)
-        ON DELETE RESTRICT ON UPDATE RESTRICT,
-    CONSTRAINT fk_ct_teacher FOREIGN KEY (teacher_id) REFERENCES teacher(id)
-        ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课程-教师关联表';
-
--- ============================================================
 -- 创建索引
 -- ============================================================
 -- 原有索引
@@ -249,7 +230,10 @@ CREATE INDEX idx_major_college_status ON major(college_id, status);
 CREATE INDEX idx_attendance_student_date ON attendance(student_id, attendance_date);
 
 -- ============================================================
--- 初始数据（密码均已使用BCrypt哈希，原文: 123456）
+-- 初始数据（密码均已使用BCrypt哈希，强度10）
+-- admin: admin@789
+-- T001: t001@789, T002: t002@789, T003: t003@789
+-- S001: s001@789, S002: s002@789, S003: s003@789, S004: s004@789, S005: s005@789
 -- ============================================================
 
 -- 学院数据
@@ -276,51 +260,47 @@ INSERT INTO major (name, college_id, status) VALUES
 
 -- 管理员数据
 INSERT INTO admin (username, password) VALUES
-('admin', '$2a$10$xho2DUDIw9hwjxC2e7NPvej93757fkeQJHEGTior0Wt.ViGBRphNq');
+('admin', '$2a$10$g3ua6UFlh2UhJQbGI7KoauWRnaLXzU2I.5TKxCj.caXbbHCxbvpwa');
 
 -- 教师数据（college_id 对应学院）
-INSERT INTO teacher (teacher_no, name, title, college, college_id, password) VALUES
-('T001', '张三', '教授', '数学与计算机科学学院', 1, '$2a$10$xho2DUDIw9hwjxC2e7NPvej93757fkeQJHEGTior0Wt.ViGBRphNq'),
-('T002', '李四', '副教授', '物理与电子工程学院', 2, '$2a$10$xho2DUDIw9hwjxC2e7NPvej93757fkeQJHEGTior0Wt.ViGBRphNq'),
-('T003', '王五', '讲师', '信息工程学院', 4, '$2a$10$xho2DUDIw9hwjxC2e7NPvej93757fkeQJHEGTior0Wt.ViGBRphNq');
+INSERT INTO teacher (teacher_no, name, title, college_id, password) VALUES
+('T001', '张三', '教授', 1, '$2a$10$VFULm.z8fLLyh4H0pBMUV.66DGwnCqSXjwRKLpfYJoOCQq8HaJJR.'),
+('T002', '李四', '副教授', 2, '$2a$10$yDx0APFgi27R.CpedD9wGeT4H.M1Izx6g82XeCXNR/.o.VRuSL0l2'),
+('T003', '王五', '讲师', 4, '$2a$10$lwx.ABNJ7sAZ7AtpuIevVuzS98f8KYPAfbqEq7MUFdO6KqHqWvv.q');
 
 -- 学生数据（college_id/major_id 对应学院和专业）
-INSERT INTO student (student_no, name, gender, major, college, college_id, major_id, password) VALUES
-('S001', '王小明', '男', '计算机科学与技术', '数学与计算机科学学院', 1, 1, '$2a$10$xho2DUDIw9hwjxC2e7NPvej93757fkeQJHEGTior0Wt.ViGBRphNq'),
-('S002', '李小红', '女', '软件工程', '数学与计算机科学学院', 1, 2, '$2a$10$xho2DUDIw9hwjxC2e7NPvej93757fkeQJHEGTior0Wt.ViGBRphNq'),
-('S003', '张小强', '男', '网络工程', '数学与计算机科学学院', 1, 3, '$2a$10$xho2DUDIw9hwjxC2e7NPvej93757fkeQJHEGTior0Wt.ViGBRphNq'),
-('S004', '刘小芳', '女', '信息安全', '信息工程学院', 4, 7, '$2a$10$xho2DUDIw9hwjxC2e7NPvej93757fkeQJHEGTior0Wt.ViGBRphNq'),
-('S005', '陈小刚', '男', '物联网工程', '信息工程学院', 4, 8, '$2a$10$xho2DUDIw9hwjxC2e7NPvej93757fkeQJHEGTior0Wt.ViGBRphNq');
+INSERT INTO student (student_no, name, gender, college_id, major_id, password) VALUES
+('S001', '王小明', '男', 1, 1, '$2a$10$jrkth40eALhwkQwYcSNckuJN.RlUwg1tIytXiF8KKHd/mXNam63Li'),
+('S002', '李小红', '女', 1, 2, '$2a$10$3qxRj9Z2eijtmwaA1N4N6.vShkdMn8eXVfHGkoPb6DG2gu4ItWsWG'),
+('S003', '张小强', '男', 1, 3, '$2a$10$hkuHkDaFQGfK2I3SSj4NCebQOVxUx3qgyS/bNo0EW.q7WU7Cm1j.i'),
+('S004', '刘小芳', '女', 4, 7, '$2a$10$UpXsJ5v0.HwRD0O5UCRvSe7sLYP8/Sf.pOtN24PC3gcSAHrKbob6e'),
+('S005', '陈小刚', '男', 4, 8, '$2a$10$aY.jnc9xaogetZfn0GknJeCCy4IixIB5HAIQQovnXxnC18EhkFVFa');
 
 -- 实验室数据
-INSERT INTO lab (lab_name, location, capacity, college, college_id) VALUES
-('计算机实验室A', '信息楼101', 40, '数学与计算机科学学院', 1),
-('计算机实验室B', '信息楼102', 35, '数学与计算机科学学院', 1),
-('软件工程实验室', '信息楼201', 30, '数学与计算机科学学院', 1),
-('网络安全实验室', '信息楼301', 25, '信息工程学院', 4),
-('物联网实验室', '信息楼401', 30, '信息工程学院', 4);
+INSERT INTO lab (lab_name, location, capacity, college_id) VALUES
+('计算机实验室A', '信息楼101', 40, 1),
+('计算机实验室B', '信息楼102', 35, 1),
+('软件工程实验室', '信息楼201', 30, 1),
+('网络安全实验室', '信息楼301', 25, 4),
+('物联网实验室', '信息楼401', 30, 4);
 
 -- 课程数据（含 college_id 和 course_type）
-INSERT INTO course (course_name, teacher_id, lab_id, course_time, max_count, college, college_id, course_type) VALUES
-('Java程序设计', 1, 1, '周一 1-2节', 35, '数学与计算机科学学院', 1, 'REQUIRED'),
-('数据库原理', 1, 3, '周二 3-4节', 30, '数学与计算机科学学院', 1, 'REQUIRED'),
-('Web开发技术', 2, 2, '周三 5-6节', 35, '物理与电子工程学院', 2, 'ELECTIVE'),
-('计算机网络', 2, 4, '周四 7-8节', 30, '物理与电子工程学院', 2, 'ELECTIVE'),
-('软件测试', 3, 3, '周五 1-2节', 30, '信息工程学院', 4, 'ELECTIVE');
-
--- 课程-教师关联表初始数据（一门课当前仅一名教师）
-INSERT INTO course_teacher (course_id, teacher_id) VALUES
-(1, 1), (2, 1), (3, 2), (4, 2), (5, 3);
+INSERT INTO course (course_name, teacher_id, lab_id, course_time, max_count, college_id, course_type) VALUES
+('Java程序设计', 1, 1, '周一 1-2节', 35, 1, 'REQUIRED'),
+('数据库原理', 1, 3, '周二 3-4节', 30, 1, 'REQUIRED'),
+('Web开发技术', 2, 2, '周三 5-6节', 35, 2, 'ELECTIVE'),
+('计算机网络', 2, 4, '周四 7-8节', 30, 2, 'ELECTIVE'),
+('软件测试', 3, 3, '周五 1-2节', 30, 4, 'ELECTIVE');
 
 -- 专业-必修课关联：计算机科学与技术专业必修 Java程序设计、数据库原理
 INSERT INTO major_required_course (major_id, course_id) VALUES
 (1, 1), (1, 2);
 
 -- ============================================================
--- 存量数据迁移脚本（仅对已有数据库升级时执行，全新安装可忽略）
--- 将 student/teacher/course 表中已有的 college 字符串按名称匹配更新为 college_id
--- 匹配失败的行保留 college_id 为 NULL
+-- 存量数据迁移脚本（迁移已完成，deprecated 列已删除）
+-- 历史升级步骤：原有数据库若存在 college/major 字符串列，先执行以下 UPDATE 进行迁移
 -- ============================================================
+-- 以下脚本已不再需要（deprecated 列已从表结构中移除）：
 -- UPDATE student s
 --   LEFT JOIN college c ON s.college = c.name
 -- SET s.college_id = c.id
@@ -506,3 +486,13 @@ BEGIN
     END IF;
 END$$
 DELIMITER ;
+
+-- ============================================================
+-- 登录尝试记录表（安全审计修复：持久化登录失败计数）
+-- ============================================================
+CREATE TABLE login_attempts (
+    attempt_key VARCHAR(100) PRIMARY KEY COMMENT '登录标识（如 student:S001）',
+    attempts INT NOT NULL DEFAULT 0 COMMENT '失败次数',
+    first_attempt_time TIMESTAMP NULL COMMENT '首次失败时间',
+    lock_until TIMESTAMP NULL COMMENT '锁定到期时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='登录尝试记录表';

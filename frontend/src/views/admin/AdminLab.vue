@@ -28,8 +28,10 @@
         <el-form-item label="地点" prop="location">
           <el-input v-model="labForm.location" placeholder="请输入地点" />
         </el-form-item>
-        <el-form-item label="学院" prop="college">
-          <el-input v-model="labForm.college" placeholder="请输入学院" />
+        <el-form-item label="学院" prop="collegeId">
+          <el-select v-model="labForm.collegeId" style="width:100%" placeholder="请选择学院" filterable>
+            <el-option v-for="c in collegeOptions" :key="c.id" :label="c.name" :value="c.id" />
+          </el-select>
         </el-form-item>
         <el-form-item label="容量" prop="capacity">
           <el-input-number v-model="labForm.capacity" />
@@ -47,12 +49,14 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getLabList, addLab, updateLab, deleteLab } from '../../api/lab'
+import { getCollegeList } from '../../api/college'
 
 const labList = ref([])
 const dialogVisible = ref(false)
 const dialogTitle = ref('添加实验室')
 const labFormRef = ref(null)
-const labForm = ref({ id: null, labName: '', location: '', college: '', capacity: 30 })
+const collegeOptions = ref([])
+const labForm = ref({ id: null, labName: '', location: '', collegeId: null, capacity: 30 })
 
 const labRules = {
   labName: [
@@ -64,6 +68,9 @@ const labRules = {
   capacity: [
     { required: true, message: '请输入容量', trigger: 'blur' },
     { type: 'number', min: 1, max: 200, message: '容量范围为1-200', trigger: 'blur' }
+  ],
+  collegeId: [
+    { required: true, message: '请选择学院', trigger: 'change' }
   ]
 }
 
@@ -82,17 +89,26 @@ const loadLabs = async () => {
   } catch (error) { ElMessage.error('加载实验室列表失败') }
 }
 
+const loadCollegeOptions = async () => {
+  try {
+    const result = await getCollegeList({ status: 'ACTIVE', size: 999 })
+    if (result.success) {
+      collegeOptions.value = result.data?.content || result.data || []
+    }
+  } catch (error) { /* 静默 */ }
+}
+
 const handleAdd = () => {
   dialogTitle.value = '添加实验室'
-  labForm.value = { id: null, labName: '', location: '', college: '', capacity: 30 }
+  labForm.value = { id: null, labName: '', location: '', collegeId: null, capacity: 30 }
   labFormRef.value?.resetFields()
   dialogVisible.value = true
 }
 
 const handleEdit = (row) => {
   dialogTitle.value = '编辑实验室'
-  labForm.value = { ...row }
   labFormRef.value?.resetFields()
+  labForm.value = { ...row }
   dialogVisible.value = true
 }
 
@@ -132,7 +148,7 @@ const handleDelete = async (id) => {
   } catch (error) { if (error !== 'cancel') ElMessage.error('删除失败') }
 }
 
-onMounted(() => { loadLabs() })
+onMounted(() => { loadLabs(); loadCollegeOptions() })
 </script>
 
 <style scoped>

@@ -1,12 +1,18 @@
 package com.labcourse.service.impl;
 
+import com.labcourse.entity.College;
 import com.labcourse.entity.Course;
+import com.labcourse.entity.Major;
 import com.labcourse.entity.MajorRequiredCourse;
 import com.labcourse.entity.Selection;
 import com.labcourse.entity.Student;
 import com.labcourse.exception.AccountLockedException;
+import com.labcourse.repository.AttendanceRepository;
+import com.labcourse.repository.CollegeRepository;
 import com.labcourse.repository.CourseRepository;
+import com.labcourse.repository.MajorRepository;
 import com.labcourse.repository.MajorRequiredCourseRepository;
+import com.labcourse.repository.ScoreRepository;
 import com.labcourse.repository.SelectionRepository;
 import com.labcourse.repository.StudentRepository;
 import com.labcourse.service.LoginAttemptService;
@@ -16,7 +22,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.util.List;
 import java.util.Optional;
 
@@ -25,6 +33,9 @@ import java.util.Optional;
 public class StudentServiceImpl implements StudentService {
 
     private static final Logger logger = LoggerFactory.getLogger(StudentServiceImpl.class);
+
+    private static final String CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     @Autowired
     private StudentRepository studentRepository;
@@ -43,6 +54,18 @@ public class StudentServiceImpl implements StudentService {
 
     @Autowired
     private SelectionRepository selectionRepository;
+
+    @Autowired
+    private ScoreRepository scoreRepository;
+
+    @Autowired
+    private AttendanceRepository attendanceRepository;
+
+    @Autowired
+    private CollegeRepository collegeRepository;
+
+    @Autowired
+    private MajorRepository majorRepository;
 
     @Override
     public Student login(String studentNo, String password) {
@@ -69,8 +92,11 @@ public class StudentServiceImpl implements StudentService {
     }
 
     @Override
-    public List<Student> list() {
-        return studentRepository.findAll();
+    public List<Student> list(Long collegeId) {
+        if (collegeId == null) {
+            return studentRepository.findAll();
+        }
+        return studentRepository.findByCollegeId(collegeId);
     }
 
     @Override
@@ -98,16 +124,10 @@ public class StudentServiceImpl implements StudentService {
             if (student.getGender() != null) {
                 existing.setGender(student.getGender());
             }
-            if (student.getMajor() != null) {
-                existing.setMajor(student.getMajor());
-            }
-            if (student.getCollege() != null) {
-                existing.setCollege(student.getCollege());
-            }
-            if (student.getCollegeId() != null) {
+            if (student.getCollegeId() != null && !student.getCollegeId().equals(existing.getCollegeId())) {
                 existing.setCollegeId(student.getCollegeId());
             }
-            if (student.getMajorId() != null) {
+            if (student.getMajorId() != null && !student.getMajorId().equals(existing.getMajorId())) {
                 existing.setMajorId(student.getMajorId());
             }
             if (student.getPassword() != null && !student.getPassword().isEmpty()) {
@@ -137,9 +157,43 @@ public class StudentServiceImpl implements StudentService {
     }
 
     @Override
+    @Transactional
     public boolean removeById(Long id) {
+        selectionRepository.deleteByStudentId(id);
+        scoreRepository.deleteByStudentId(id);
+        attendanceRepository.deleteByStudentId(id);
         studentRepository.deleteById(id);
         return true;
+    }
+
+    @Override
+    public String resetPassword(Long id) {
+        Optional<Student> existingOpt = studentRepository.findById(id);
+        if (existingOpt.isPresent()) {
+            Student existing = existingOpt.get();
+            String newPassword = generateRandomPassword();
+            existing.setPassword(passwordEncoder.encode(newPassword));
+            existing.setRefreshToken(null);
+            studentRepository.save(existing);
+            return newPassword;
+        }
+        return null;
+    }
+
+    @Override
+    public boolean changePassword(Long id, String oldPassword, String newPassword) {
+        Optional<Student> existingOpt = studentRepository.findById(id);
+        if (existingOpt.isPresent()) {
+            Student existing = existingOpt.get();
+            if (!passwordEncoder.matches(oldPassword, existing.getPassword())) {
+                return false;
+            }
+            existing.setPassword(passwordEncoder.encode(newPassword));
+            existing.setRefreshToken(null);
+            studentRepository.save(existing);
+            return true;
+        }
+        return false;
     }
 
     private void assignRequiredCourses(Long studentId, Long majorId) {
@@ -166,5 +220,13 @@ public class StudentServiceImpl implements StudentService {
                 logger.warn("为学生 {} 自动分配必修课时出错，课程ID={}: {}", studentId, mrc.getCourseId(), e.getMessage());
             }
         }
+    }
+
+    private String generateRandomPassword() {
+        StringBuilder sb = new StringBuilder(8);
+        for (int i = 0; i < 8; i++) {
+            sb.append(CHARS.charAt(RANDOM.nextInt(CHARS.length())));
+        }
+        return sb.toString();
     }
 }

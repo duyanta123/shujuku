@@ -1,8 +1,10 @@
 package com.labcourse.service.impl;
 
+import com.labcourse.entity.College;
 import com.labcourse.entity.Teacher;
 import com.labcourse.exception.AccountLockedException;
-import com.labcourse.repository.CourseTeacherRepository;
+import com.labcourse.repository.CollegeRepository;
+import com.labcourse.repository.CourseRepository;
 import com.labcourse.repository.TeacherRepository;
 import com.labcourse.service.LoginAttemptService;
 import com.labcourse.service.TeacherService;
@@ -10,12 +12,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.security.SecureRandom;
 import java.util.List;
 import java.util.Optional;
 
 @Service
 @SuppressWarnings("null")
 public class TeacherServiceImpl implements TeacherService {
+
+    private static final String CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     @Autowired
     private TeacherRepository teacherRepository;
@@ -27,7 +33,10 @@ public class TeacherServiceImpl implements TeacherService {
     private LoginAttemptService loginAttemptService;
 
     @Autowired
-    private CourseTeacherRepository courseTeacherRepository;
+    private CollegeRepository collegeRepository;
+
+    @Autowired
+    private CourseRepository courseRepository;
 
     @Override
     public Teacher login(String teacherNo, String password) {
@@ -54,8 +63,11 @@ public class TeacherServiceImpl implements TeacherService {
     }
 
     @Override
-    public List<Teacher> list() {
-        return teacherRepository.findAll();
+    public List<Teacher> list(Long collegeId) {
+        if (collegeId == null) {
+            return teacherRepository.findAll();
+        }
+        return teacherRepository.findByCollegeId(collegeId);
     }
 
     @Override
@@ -79,15 +91,7 @@ public class TeacherServiceImpl implements TeacherService {
             if (teacher.getTitle() != null) {
                 existing.setTitle(teacher.getTitle());
             }
-            if (teacher.getCollege() != null) {
-                existing.setCollege(teacher.getCollege());
-            }
-            if (teacher.getCollegeId() != null) {
-                if (existing.getCollegeId() != null && !existing.getCollegeId().equals(teacher.getCollegeId())) {
-                    if (courseTeacherRepository.findByTeacherId(teacher.getId()).isPresent()) {
-                        return false;
-                    }
-                }
+            if (teacher.getCollegeId() != null && !teacher.getCollegeId().equals(existing.getCollegeId())) {
                 existing.setCollegeId(teacher.getCollegeId());
             }
             if (teacher.getPassword() != null && !teacher.getPassword().isEmpty()) {
@@ -101,7 +105,48 @@ public class TeacherServiceImpl implements TeacherService {
 
     @Override
     public boolean removeById(Long id) {
+        if (!courseRepository.findByTeacherId(id).isEmpty()) {
+            return false;
+        }
         teacherRepository.deleteById(id);
         return true;
+    }
+
+    @Override
+    public String resetPassword(Long id) {
+        Optional<Teacher> existingOpt = teacherRepository.findById(id);
+        if (existingOpt.isPresent()) {
+            Teacher existing = existingOpt.get();
+            String newPassword = generateRandomPassword();
+            existing.setPassword(passwordEncoder.encode(newPassword));
+            existing.setRefreshToken(null);
+            teacherRepository.save(existing);
+            return newPassword;
+        }
+        return null;
+    }
+
+    @Override
+    public boolean changePassword(Long id, String oldPassword, String newPassword) {
+        Optional<Teacher> existingOpt = teacherRepository.findById(id);
+        if (existingOpt.isPresent()) {
+            Teacher existing = existingOpt.get();
+            if (!passwordEncoder.matches(oldPassword, existing.getPassword())) {
+                return false;
+            }
+            existing.setPassword(passwordEncoder.encode(newPassword));
+            existing.setRefreshToken(null);
+            teacherRepository.save(existing);
+            return true;
+        }
+        return false;
+    }
+
+    private String generateRandomPassword() {
+        StringBuilder sb = new StringBuilder(8);
+        for (int i = 0; i < 8; i++) {
+            sb.append(CHARS.charAt(RANDOM.nextInt(CHARS.length())));
+        }
+        return sb.toString();
     }
 }

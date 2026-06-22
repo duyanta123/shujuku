@@ -1,6 +1,9 @@
 package com.labcourse.filter;
 
 import com.labcourse.util.JwtUtil;
+import com.labcourse.repository.AdminRepository;
+import com.labcourse.repository.StudentRepository;
+import com.labcourse.repository.TeacherRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,6 +31,15 @@ public class JwtFilter extends OncePerRequestFilter {
     @Autowired
     private JwtUtil jwtUtil;
 
+    @Autowired
+    private StudentRepository studentRepository;
+
+    @Autowired
+    private TeacherRepository teacherRepository;
+
+    @Autowired
+    private AdminRepository adminRepository;
+
     @Override
     @SuppressWarnings("override")
     protected void doFilterInternal(HttpServletRequest request,
@@ -38,6 +50,10 @@ public class JwtFilter extends OncePerRequestFilter {
             if (StringUtils.hasText(token) && jwtUtil.validateToken(token)) {
                 Long userId = jwtUtil.extractUserId(token);
                 String role = jwtUtil.extractRole(token);
+                if (userId == null || !isExistingUser(userId, role)) {
+                    filterChain.doFilter(request, response);
+                    return;
+                }
 
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                         userId, null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role))
@@ -49,6 +65,18 @@ public class JwtFilter extends OncePerRequestFilter {
             logger.error("JWT验证失败", e);
         }
         filterChain.doFilter(request, response);
+    }
+
+    private boolean isExistingUser(Long userId, String role) {
+        if (role == null) {
+            return false;
+        }
+        return switch (role.toLowerCase()) {
+            case "student" -> studentRepository.existsById(userId);
+            case "teacher" -> teacherRepository.existsById(userId);
+            case "admin" -> adminRepository.existsById(userId);
+            default -> false;
+        };
     }
 
     private String extractToken(HttpServletRequest request) {

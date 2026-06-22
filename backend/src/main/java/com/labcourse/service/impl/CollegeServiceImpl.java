@@ -2,9 +2,6 @@ package com.labcourse.service.impl;
 
 import com.labcourse.entity.College;
 import com.labcourse.repository.CollegeRepository;
-import com.labcourse.repository.MajorRepository;
-import com.labcourse.repository.StudentRepository;
-import com.labcourse.repository.TeacherRepository;
 import com.labcourse.service.CollegeService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,15 +23,6 @@ public class CollegeServiceImpl implements CollegeService {
 
     @Autowired
     private CollegeRepository collegeRepository;
-
-    @Autowired
-    private MajorRepository majorRepository;
-
-    @Autowired
-    private StudentRepository studentRepository;
-
-    @Autowired
-    private TeacherRepository teacherRepository;
 
     @Override
     public Map<String, Object> list(String name, String status, int page, int size, String sortBy, String sortDir) {
@@ -101,16 +89,6 @@ public class CollegeServiceImpl implements CollegeService {
     @Override
     public Map<String, Object> delete(Long id) {
         Map<String, Object> result = new HashMap<>();
-        long majorCount = majorRepository.countByCollegeId(id);
-        long studentCount = studentRepository.countByCollegeId(id);
-        long teacherCount = teacherRepository.countByCollegeId(id);
-
-        if (majorCount > 0 || studentCount > 0 || teacherCount > 0) {
-            result.put("success", false);
-            result.put("message", String.format("该学院下存在 %d 个专业、%d 名学生、%d 名教师，无法删除",
-                    majorCount, studentCount, teacherCount));
-            return result;
-        }
 
         Optional<College> collegeOpt = collegeRepository.findById(id);
         if (collegeOpt.isPresent()) {

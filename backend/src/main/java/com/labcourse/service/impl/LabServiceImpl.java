@@ -1,6 +1,8 @@
 package com.labcourse.service.impl;
 
+import com.labcourse.entity.College;
 import com.labcourse.entity.Lab;
+import com.labcourse.repository.CollegeRepository;
 import com.labcourse.repository.LabRepository;
 import com.labcourse.service.LabService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +17,9 @@ public class LabServiceImpl implements LabService {
 
     @Autowired
     private LabRepository labRepository;
+
+    @Autowired
+    private CollegeRepository collegeRepository;
 
     @Override
     public List<Lab> list() {
@@ -35,7 +40,9 @@ public class LabServiceImpl implements LabService {
             if (lab.getLabName() != null) { existing.setLabName(lab.getLabName()); }
             if (lab.getLocation() != null) { existing.setLocation(lab.getLocation()); }
             if (lab.getCapacity() != null) { existing.setCapacity(lab.getCapacity()); }
-            if (lab.getCollege() != null) { existing.setCollege(lab.getCollege()); }
+            if (lab.getCollegeId() != null && !lab.getCollegeId().equals(existing.getCollegeId())) {
+                existing.setCollegeId(lab.getCollegeId());
+            }
             labRepository.save(existing);
             return true;
         }

@@ -21,13 +21,6 @@ public class Student {
     @Column(name = "gender", length = 10)
     private String gender;
     
-    @Column(name = "major", length = 100)
-    private String major;
-    
-    @Size(max = 100)
-    @Column(name = "college", length = 100)
-    private String college;
-    
     @Column(name = "college_id")
     private Long collegeId;
     
@@ -39,8 +32,12 @@ public class Student {
     private String password;
     
     // Security fix (HIGH-001): Refresh Token 用于Token轮转
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @Column(name = "refresh_token", length = 512)
     private String refreshToken;
+
+    @Column(name = "avatar_url", length = 500)
+    private String avatarUrl;
     
     @Column(name = "created_at")
     private LocalDateTime createdAt;
@@ -62,12 +59,6 @@ public class Student {
     public String getGender() { return gender; }
     public void setGender(String gender) { this.gender = gender; }
 
-    public String getMajor() { return major; }
-    public void setMajor(String major) { this.major = major; }
-
-    public String getCollege() { return college; }
-    public void setCollege(String college) { this.college = college; }
-
     public Long getCollegeId() { return collegeId; }
     public void setCollegeId(Long collegeId) { this.collegeId = collegeId; }
 
@@ -79,6 +70,9 @@ public class Student {
 
     public String getRefreshToken() { return refreshToken; }
     public void setRefreshToken(String refreshToken) { this.refreshToken = refreshToken; }
+
+    public String getAvatarUrl() { return avatarUrl; }
+    public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

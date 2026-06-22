@@ -101,7 +101,6 @@ public class MajorRequiredCourseServiceImpl implements MajorRequiredCourseServic
                 mrc.major_id,
                 mrc.course_id,
                 c.course_name,
-                c.college,
                 c.course_time,
                 c.max_count,
                 t.name AS teacher_name

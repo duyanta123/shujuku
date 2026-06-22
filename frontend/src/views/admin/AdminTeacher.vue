@@ -2,15 +2,33 @@
   <div class="page-container">
     <div class="page-header">
       <h2>教师管理</h2>
-      <el-button type="primary" @click="handleAdd">添加教师</el-button>
+      <div class="header-actions">
+        <el-select
+          v-model="filterCollegeId"
+          placeholder="请选择学院"
+          clearable
+          filterable
+          style="width: 200px"
+          @change="onFilterChange"
+        >
+          <el-option label="全部" value="" />
+          <el-option
+            v-for="c in collegeOptions"
+            :key="c.id"
+            :label="c.name"
+            :value="c.id"
+          />
+        </el-select>
+        <el-button type="primary" @click="handleAdd">添加教师</el-button>
+      </div>
     </div>
 
     <div class="table-responsive">
-      <el-table :data="teacherList" stripe>
+      <el-table :data="teacherList" stripe v-loading="loading">
         <el-table-column prop="teacherNo" label="工号" width="150" />
         <el-table-column prop="name" label="姓名" width="120" />
         <el-table-column prop="title" label="职称" width="120" />
-        <el-table-column prop="collegeName" label="学院" min-width="180" />
+        <el-table-column prop="college" label="学院" min-width="180" />
         <el-table-column label="操作" width="260" align="center">
           <template #default="scope">
             <el-button type="primary" size="small" text @click="handleEdit(scope.row)">编辑</el-button>
@@ -43,10 +61,6 @@
             <el-option v-for="c in collegeOptions" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="密码" prop="password">
-          <el-input v-model="teacherForm.password" type="password" placeholder="留空则不修改密码" show-password />
-          <span class="form-hint">留空则保持原密码不变</span>
-        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -64,14 +78,9 @@
         <span class="reset-label">姓名：</span>
         <strong>{{ resetTarget.name }}</strong>
       </div>
-      <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-width="80px" class="reset-form" status-icon>
-        <el-form-item label="新密码" prop="password">
-          <el-input v-model="passwordForm.password" type="password" placeholder="请输入新密码" show-password />
-        </el-form-item>
-        <el-form-item label="确认密码" prop="confirmPassword">
-          <el-input v-model="passwordForm.confirmPassword" type="password" placeholder="请再次输入新密码" show-password />
-        </el-form-item>
-      </el-form>
+      <p style="color: var(--color-text-muted); font-size: 0.88rem; padding: 12px 0;">
+        确定要重置该教师的密码为初始密码（123456）吗？
+      </p>
       <template #footer>
         <el-button @click="passwordDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handlePasswordSave">确认重置</el-button>
@@ -81,26 +90,23 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getTeacherList, addTeacher, updateTeacher, deleteTeacher } from '../../api/teacher'
+import { getTeacherList, addTeacher, updateTeacher, deleteTeacher, resetTeacherPassword } from '../../api/teacher'
 import { getCollegeList } from '../../api/college'
-import {
-  validatePassword,
-  validateConfirmPassword,
-  logPasswordValidation,
-  getPasswordValidationError
-} from '../../utils/passwordValidator'
 
 const collegeOptions = ref([])
 const collegesLoading = ref(false)
 const submitting = ref(false)
 
+const filterCollegeId = ref('')
+const loading = ref(false)
+
 const teacherList = ref([])
 const dialogVisible = ref(false)
 const dialogTitle = ref('添加教师')
 const teacherFormRef = ref(null)
-const teacherForm = ref({ id: null, teacherNo: '', name: '', title: '', collegeId: null, password: '' })
+const teacherForm = ref({ id: null, teacherNo: '', name: '', title: '', collegeId: null })
 
 const teacherRules = {
   teacherNo: [
@@ -115,58 +121,43 @@ const teacherRules = {
   ],
   collegeId: [
     { required: true, message: '请选择学院', trigger: 'change' }
-  ],
-  password: [
-    {
-      validator: (_rule, value, callback) => {
-        if (!value || value === '') {
-          callback()
-          return
-        }
-        validatePassword(_rule, value, callback)
-      },
-      trigger: 'blur'
-    }
   ]
 }
 
 const passwordDialogVisible = ref(false)
-const passwordFormRef = ref(null)
 const resetTarget = ref({ id: null, teacherNo: '', name: '' })
-const passwordForm = reactive({ password: '', confirmPassword: '' })
 
-const passwordRules = {
-  password: [
-    { validator: validatePassword, trigger: ['blur', 'change'] }
-  ],
-  confirmPassword: [
-    {
-      validator: (_rule, value, callback) => {
-        validateConfirmPassword(_rule, value, callback, passwordForm.password)
-      },
-      trigger: ['blur', 'change']
-    }
-  ]
+const loadTeachers = async (collegeId) => {
+  loading.value = true
+  try {
+    const result = await getTeacherList(collegeId)
+    if (result.success) teacherList.value = result.data
+  } catch (error) {
+    ElMessage.error('筛选失败，请重试')
+  } finally {
+    loading.value = false
+  }
 }
 
-const loadTeachers = async () => {
-  try {
-    const result = await getTeacherList()
-    if (result.success) teacherList.value = result.data
-  } catch (error) { ElMessage.error('加载教师列表失败') }
+let filterTimer = null
+const onFilterChange = (val) => {
+  clearTimeout(filterTimer)
+  filterTimer = setTimeout(() => {
+    loadTeachers(val || undefined)
+  }, 300)
 }
 
 const handleAdd = () => {
   dialogTitle.value = '添加教师'
-  teacherForm.value = { id: null, teacherNo: '', name: '', title: '', collegeId: null, password: '' }
+  teacherForm.value = { id: null, teacherNo: '', name: '', title: '', collegeId: null }
   teacherFormRef.value?.resetFields()
   dialogVisible.value = true
 }
 
 const handleEdit = (row) => {
   dialogTitle.value = '编辑教师'
-  teacherForm.value = { ...row, password: '' }
   teacherFormRef.value?.resetFields()
+  teacherForm.value = { ...row }
   dialogVisible.value = true
 }
 
@@ -185,7 +176,7 @@ const handleSave = async () => {
     if (result.success) {
       ElMessage.success('保存成功')
       dialogVisible.value = false
-      loadTeachers()
+      loadTeachers(filterCollegeId.value || undefined)
     } else {
       ElMessage.error(result.message)
     }
@@ -195,33 +186,12 @@ const handleSave = async () => {
 
 const handleResetPassword = (row) => {
   resetTarget.value = { id: row.id, teacherNo: row.teacherNo, name: row.name }
-  passwordForm.password = ''
-  passwordForm.confirmPassword = ''
-  passwordFormRef.value?.resetFields()
   passwordDialogVisible.value = true
 }
 
 const handlePasswordSave = async () => {
   try {
-    await passwordFormRef.value.validate()
-  } catch {
-    const error = getPasswordValidationError(passwordForm.password)
-    logPasswordValidation('teacher', resetTarget.value.teacherNo, resetTarget.value.name, passwordForm.password, false, error)
-    return
-  }
-  logPasswordValidation('teacher', resetTarget.value.teacherNo, resetTarget.value.name, passwordForm.password, true, null)
-  try {
-    await ElMessageBox.confirm(
-      `确定要重置教师 ${resetTarget.value.name}（${resetTarget.value.teacherNo}）的密码吗？`,
-      '确认重置密码',
-      { confirmButtonText: '确定重置', cancelButtonText: '取消', type: 'warning' }
-    )
-    const result = await updateTeacher({
-      id: resetTarget.value.id,
-      teacherNo: resetTarget.value.teacherNo,
-      name: resetTarget.value.name,
-      password: passwordForm.password
-    })
+    const result = await resetTeacherPassword(resetTarget.value.id)
     if (result.success) {
       ElMessage.success('密码重置成功')
       passwordDialogVisible.value = false
@@ -229,7 +199,7 @@ const handlePasswordSave = async () => {
       ElMessage.error(result.message || '密码重置失败')
     }
   } catch (error) {
-    if (error !== 'cancel') ElMessage.error('密码重置失败')
+    ElMessage.error('密码重置失败')
   }
 }
 
@@ -237,7 +207,7 @@ const handleDelete = async (id) => {
   try {
     await ElMessageBox.confirm('确定要删除吗？', '提示', { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' })
     const result = await deleteTeacher(id)
-    if (result.success) { ElMessage.success('删除成功'); loadTeachers() }
+    if (result.success) { ElMessage.success('删除成功'); loadTeachers(filterCollegeId.value || undefined) }
     else { ElMessage.error(result.message) }
   } catch (error) { if (error !== 'cancel') ElMessage.error('删除失败') }
 }
@@ -249,19 +219,21 @@ const loadCollegeOptions = async () => {
   try {
     const result = await getCollegeList({ status: 'ACTIVE', size: 999 })
     if (result.success) {
-      collegeOptions.value = result.data?.records || result.data || []
+      collegeOptions.value = result.data?.content || result.data || []
     }
-  } catch (error) { /* 静默 */ }
-  finally { collegesLoading.value = false }
+  } catch (error) {
+    ElMessage.warning('学院列表加载失败')
+  } finally {
+    collegesLoading.value = false
+  }
 }
 </script>
 
 <style scoped>
-.form-hint {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
-  margin-top: 4px;
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .reset-password-info {
@@ -278,25 +250,6 @@ const loadCollegeOptions = async () => {
 .reset-label {
   color: var(--color-text-muted);
   font-size: 0.85rem;
-}
-
-.reset-form {
-  margin-top: 4px;
-}
-
-.reset-form :deep(.el-form-item__error) {
-  font-size: 0.78rem;
-  color: #f56c6c;
-  line-height: 1.4;
-  padding-top: 2px;
-}
-
-.reset-form :deep(.el-form-item.is-error .el-input__wrapper) {
-  box-shadow: 0 0 0 1px #f56c6c inset;
-}
-
-.reset-form :deep(.el-form-item.is-success .el-input__wrapper) {
-  box-shadow: 0 0 0 1px #67c23a inset;
 }
 
 /* 编辑表单统一校验样式 */

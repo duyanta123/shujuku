@@ -3,13 +3,19 @@ package com.labcourse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.labcourse.entity.Attendance;
 import com.labcourse.entity.AttendanceStatus;
+import com.labcourse.entity.Selection;
 import com.labcourse.repository.AttendanceRepository;
+import com.labcourse.repository.LoginAttemptRepository;
+import com.labcourse.repository.SelectionRepository;
+import com.labcourse.repository.StudentRepository;
+import com.labcourse.repository.TeacherRepository;
 import com.labcourse.service.AttendanceService;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
 import org.junit.jupiter.api.Assumptions;
@@ -38,8 +44,7 @@ class AttendanceServiceTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
     private AttendanceService attendanceService;
@@ -47,11 +52,26 @@ class AttendanceServiceTest {
     @Autowired
     private AttendanceRepository attendanceRepository;
 
+    @Autowired
+    private SelectionRepository selectionRepository;
+
+    @Autowired
+    private LoginAttemptRepository loginAttemptRepository;
+
+    @Autowired
+    private StudentRepository studentRepository;
+
+    @Autowired
+    private TeacherRepository teacherRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
     private String studentToken;
     private String teacherToken;
     private String student2Token;
     private static final Long SID1 = 1L;
-    private static final Long SID2 = 9L;
+    private static final Long SID2 = 2L;
     private static final Long SID3 = 3L;
     private static final Long CID_BAD = 99999L;
     private static final Long TID1 = 1L;
@@ -78,6 +98,8 @@ class AttendanceServiceTest {
             activeCourseId = 3L; // fallback for non-check-in tests
         }
 
+        resetLoginState();
+
         // Login as student S001
         String loginBody = objectMapper.writeValueAsString(Map.of("studentNo", "S001", "password", "123456"));
         String resp = mockMvc.perform(post("/api/student/login")
@@ -87,8 +109,8 @@ class AttendanceServiceTest {
                 .andReturn().getResponse().getContentAsString();
         studentToken = (String) objectMapper.readValue(resp, Map.class).get("accessToken");
 
-        // Login as student S008
-        loginBody = objectMapper.writeValueAsString(Map.of("studentNo", "S008", "password", "123456"));
+        // Login as student S002
+        loginBody = objectMapper.writeValueAsString(Map.of("studentNo", "S002", "password", "123456"));
         resp = mockMvc.perform(post("/api/student/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(loginBody))
@@ -110,6 +132,35 @@ class AttendanceServiceTest {
                 .ifPresent(a -> attendanceRepository.delete(a));
         attendanceRepository.findByStudentIdAndCourseIdAndAttendanceDate(SID2, activeCourseId, today)
                 .ifPresent(a -> attendanceRepository.delete(a));
+        ensureSelection(SID1, activeCourseId);
+        ensureSelection(SID2, activeCourseId);
+    }
+
+    private void ensureSelection(Long studentId, Long courseId) {
+        if (selectionRepository.findByStudentIdAndCourseId(studentId, courseId).isEmpty()) {
+            Selection selection = new Selection();
+            selection.setStudentId(studentId);
+            selection.setCourseId(courseId);
+            selectionRepository.save(selection);
+        }
+    }
+
+    private void resetLoginState() {
+        loginAttemptRepository.deleteById("student:S001");
+        loginAttemptRepository.deleteById("student:S002");
+        loginAttemptRepository.deleteById("teacher:T001");
+        studentRepository.findByStudentNo("S001").ifPresent(student -> {
+            student.setPassword(passwordEncoder.encode("123456"));
+            studentRepository.save(student);
+        });
+        studentRepository.findByStudentNo("S002").ifPresent(student -> {
+            student.setPassword(passwordEncoder.encode("123456"));
+            studentRepository.save(student);
+        });
+        teacherRepository.findByTeacherNo("T001").ifPresent(teacher -> {
+            teacher.setPassword(passwordEncoder.encode("123456"));
+            teacherRepository.save(teacher);
+        });
     }
 
     // ================================================================
@@ -301,9 +352,9 @@ class AttendanceServiceTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("Authorization", "Bearer " + studentToken)
                         .content(body))
-                .andExpect(status().isOk())
+                .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("学生不存在"));
+                .andExpect(jsonPath("$.message").value("无权为其他学生签到"));
     }
 
     @Test

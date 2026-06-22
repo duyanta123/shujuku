@@ -26,7 +26,7 @@ public class CourseServiceImpl implements CourseService {
 
     @Autowired
     private SelectionRepository selectionRepository;
-    
+
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
@@ -41,21 +41,23 @@ public class CourseServiceImpl implements CourseService {
                 l.location,
                 c.course_time,
                 c.max_count,
-                c.college,
                 COUNT(s.id) AS selected_count
             FROM course c
             LEFT JOIN teacher t ON c.teacher_id = t.id
             LEFT JOIN lab l ON c.lab_id = l.id
             LEFT JOIN selection s ON c.id = s.course_id
-            GROUP BY c.id, c.course_name, t.name, l.lab_name, l.location, c.course_time, c.max_count, c.college
+            GROUP BY c.id, c.course_name, t.name, l.lab_name, l.location, c.course_time, c.max_count
             ORDER BY c.id
             """;
         return jdbcTemplate.queryForList(sql);
     }
 
     @Override
-    public List<Course> list() {
-        return courseRepository.findAll();
+    public List<Course> list(Long collegeId) {
+        if (collegeId == null) {
+            return courseRepository.findAll();
+        }
+        return courseRepository.findByCollegeId(collegeId);
     }
 
     @Override
@@ -74,7 +76,6 @@ public class CourseServiceImpl implements CourseService {
             if (course.getLabId() != null) { existing.setLabId(course.getLabId()); }
             if (course.getCourseTime() != null) { existing.setCourseTime(course.getCourseTime()); }
             if (course.getMaxCount() != null) { existing.setMaxCount(course.getMaxCount()); }
-            if (course.getCollege() != null) { existing.setCollege(course.getCollege()); }
             if (course.getCollegeId() != null) { existing.setCollegeId(course.getCollegeId()); }
             if (course.getCourseType() != null) {
                 if (existing.getCourseType() != null && !existing.getCourseType().equals(course.getCourseType())) {
@@ -106,8 +107,9 @@ public class CourseServiceImpl implements CourseService {
         int deletedSelections = jdbcTemplate.update("DELETE FROM selection WHERE course_id = ?", id);
         int deletedScores = jdbcTemplate.update("DELETE FROM score WHERE course_id = ?", id);
         int deletedAttendances = jdbcTemplate.update("DELETE FROM attendance WHERE course_id = ?", id);
-        logger.info("删除课程 {} 的关联数据：选课 {} 条，成绩 {} 条，考勤 {} 条",
-                id, deletedSelections, deletedScores, deletedAttendances);
+        int deletedMajorRequiredCourses = jdbcTemplate.update("DELETE FROM major_required_course WHERE course_id = ?", id);
+        logger.info("删除课程 {} 的关联数据：选课 {} 条，成绩 {} 条，考勤 {} 条，专业必修关联 {} 条",
+                id, deletedSelections, deletedScores, deletedAttendances, deletedMajorRequiredCourses);
 
         courseRepository.deleteById(id);
         logger.info("课程 {} 删除成功", id);

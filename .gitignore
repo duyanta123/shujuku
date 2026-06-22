@@ -19,6 +19,7 @@ bin/
 out/
 
 # Maven
+.m2/
 .mvn/
 mvnw
 mvnw.cmd
@@ -34,6 +35,10 @@ pnpm-lock.yaml
 dist/
 .vite/
 .cache/
+
+# Local tooling caches
+.playwright_pkgs/
+.trae/
 
 # Mac
 .DS_Store
@@ -65,3 +70,24 @@ Desktop.ini
 logs/
 *.log
 server.log
+
+# Test/debug outputs
+playwright-report/
+test-results/
+**/playwright-report/
+**/test-results/
+**/screenshots/
+*.webm
+recon_*.png
+FAIL_*.png
+
+# Runtime uploads
+backend/uploads/
+
+# Local temp/debug files
+cookies.txt
+login.json
+_t.json
+_tmp.json
+tmp_body.txt
+query

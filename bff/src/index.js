@@ -44,7 +44,12 @@ async function buildApp() {
     secret: config.jwt.secret,
   })
   // Security fix (MED-002): 限制请求体大小
-  await app.register(formbody, { bodyLimit: 1048576 }) // 1MB
+  await app.register(formbody, { bodyLimit: 3145728 }) // 3MB
+
+  // 支持 multipart/form-data 文件上传（不做解析，由代理层透传）
+  app.addContentTypeParser('multipart/form-data', { parseAs: 'buffer' }, (req, payload, done) => {
+    done(null, payload)
+  })
 
   // Security fix (HIGH-005): 全局速率限制防止暴力破解
   await app.register(rateLimit, {

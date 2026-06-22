@@ -19,7 +19,7 @@ describe('配置模块', () => {
   })
 
   it('JWT 密钥应该与 Spring Boot 一致', () => {
-    expect(config.jwt.secret).toBe('lab-course-system-secret-key-2024-very-long-secret')
+    expect(config.jwt.secret).toBe('lab-course-system-secret-key-2024')
   })
 
   it('JWT 过期时间应该是 86400000ms', () => {

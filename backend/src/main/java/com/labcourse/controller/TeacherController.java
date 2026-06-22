@@ -7,6 +7,7 @@ import com.labcourse.util.JwtUtil;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -53,10 +54,15 @@ public class TeacherController {
     }
 
     @GetMapping("/list")
-    public ResponseEntity<Map<String, Object>> list() {
+    public ResponseEntity<Map<String, Object>> list(@RequestParam(required = false) Long collegeId) {
         Map<String, Object> result = new HashMap<>();
+        if (collegeId != null && collegeId <= 0) {
+            result.put("success", true);
+            result.put("data", java.util.Collections.emptyList());
+            return ResponseEntity.ok(result);
+        }
         result.put("success", true);
-        result.put("data", teacherService.list());
+        result.put("data", teacherService.list(collegeId));
         return ResponseEntity.ok(result);
     }
 
@@ -84,6 +90,47 @@ public class TeacherController {
         boolean success = teacherService.removeById(id);
         result.put("success", success);
         result.put("message", success ? "删除成功" : "删除失败");
+        return ResponseEntity.ok(result);
+    }
+
+    // 管理员重置教师密码为随机8位密码
+    @PostMapping("/reset-password/{id}")
+    public ResponseEntity<Map<String, Object>> resetPassword(@PathVariable Long id) {
+        Map<String, Object> result = new HashMap<>();
+        String newPassword = teacherService.resetPassword(id);
+        if (newPassword != null) {
+            result.put("success", true);
+            result.put("message", "密码已重置为: " + newPassword);
+        } else {
+            result.put("success", false);
+            result.put("message", "重置失败，教师不存在");
+        }
+        return ResponseEntity.ok(result);
+    }
+
+    // 教师自助修改密码（从JWT中获取当前用户ID）
+    @PutMapping("/change-password")
+    public ResponseEntity<Map<String, Object>> changePassword(@RequestBody Map<String, String> data) {
+        Map<String, Object> result = new HashMap<>();
+        // 从SecurityContext获取当前登录用户ID
+        Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String oldPassword = data.get("oldPassword");
+        String newPassword = data.get("newPassword");
+
+        if (oldPassword == null || newPassword == null || oldPassword.isEmpty() || newPassword.isEmpty()) {
+            result.put("success", false);
+            result.put("message", "旧密码和新密码不能为空");
+            return ResponseEntity.ok(result);
+        }
+
+        boolean success = teacherService.changePassword(userId, oldPassword, newPassword);
+        if (success) {
+            result.put("success", true);
+            result.put("message", "密码修改成功");
+        } else {
+            result.put("success", false);
+            result.put("message", "旧密码错误");
+        }
         return ResponseEntity.ok(result);
     }
 }

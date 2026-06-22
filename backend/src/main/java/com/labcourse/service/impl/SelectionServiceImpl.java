@@ -10,10 +10,15 @@ import com.labcourse.service.SelectionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.SqlOutParameter;
+import org.springframework.jdbc.core.SqlParameter;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.simple.SimpleJdbcCall;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.Types;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -37,15 +42,15 @@ public class SelectionServiceImpl implements SelectionService {
     private JdbcTemplate jdbcTemplate;
 
     @Override
-    @Transactional
     public boolean addSelection(Long studentId, Long courseId) {
         try {
             // Check course exists
-            Course course = courseRepository.findById(courseId).orElse(null);
-            if (course == null) {
+            Optional<Course> courseOpt = courseRepository.findById(courseId);
+            if (courseOpt.isEmpty()) {
                 logger.warn("选课失败：课程 {} 不存在", courseId);
                 return false;
             }
+            Course course = courseOpt.get();
 
             // Check if course is REQUIRED - cannot manually select
             if ("REQUIRED".equals(course.getCourseType())) {
@@ -65,24 +70,54 @@ public class SelectionServiceImpl implements SelectionService {
                 }
             }
 
-            if (selectionRepository.findByStudentIdAndCourseId(studentId, courseId).isPresent()) {
-                logger.warn("选课失败：学生 {} 已选择课程 {}", studentId, courseId);
+            // Call stored procedure for conflict check, capacity check and insert
+            /*
+             * 存储过程 proc_check_course_selection_conflict 参数类型映射：
+             *   p_student_id   BIGINT(IN)   → Java: Long         → JDBC: Types.BIGINT
+             *   p_course_id    BIGINT(IN)   → Java: Long         → JDBC: Types.BIGINT
+             *   p_result_code  INT(OUT)     → Java: Integer      → JDBC: Types.INTEGER
+             *   p_result_msg   VARCHAR(OUT) → Java: String       → JDBC: Types.VARCHAR
+             */
+            SimpleJdbcCall jdbcCall = new SimpleJdbcCall(jdbcTemplate)
+                    .withProcedureName("proc_check_course_selection_conflict")
+                    .declareParameters(
+                            new SqlParameter("p_student_id", Types.BIGINT),
+                            new SqlParameter("p_course_id", Types.BIGINT),
+                            new SqlOutParameter("p_result_code", Types.INTEGER),
+                            new SqlOutParameter("p_result_msg", Types.VARCHAR)
+                    );
+
+            MapSqlParameterSource inParams = new MapSqlParameterSource()
+                    .addValue("p_student_id", studentId)
+                    .addValue("p_course_id", courseId);
+
+            Map<String, Object> out = jdbcCall.execute(inParams);
+            Integer resultCode = (Integer) out.get("p_result_code");
+            String resultMsg = (String) out.get("p_result_msg");
+
+            if (resultCode == null) {
+                logger.error("选课异常：存储过程返回空结果码，学生 {} 课程 {}", studentId, courseId);
                 return false;
             }
 
-            Long count = selectionRepository.countByCourseId(courseId);
-            
-            if (count >= course.getMaxCount()) {
-                logger.warn("选课失败：课程 {} 人数已满 (已选 {} / 上限 {})", courseId, count, course.getMaxCount());
-                return false;
+            switch (resultCode) {
+                case 0:
+                    logger.info("选课成功：学生 {} 选择了课程 {} ({})", studentId, courseId, course.getCourseName());
+                    return true;
+                case 1:
+                    logger.warn("选课失败：学生 {} 已选择课程 {} - {}", studentId, courseId, resultMsg);
+                    return false;
+                case 2:
+                    logger.warn("选课失败：课程 {} 容量已满 - {}", courseId, resultMsg);
+                    return false;
+                default:
+                    logger.error("选课异常：存储过程返回未知结果码 {}，学生 {} 课程 {} - {}",
+                            resultCode, studentId, courseId, resultMsg);
+                    return false;
             }
-
-            Selection selection = new Selection();
-            selection.setStudentId(studentId);
-            selection.setCourseId(courseId);
-            selectionRepository.save(selection);
-            logger.info("选课成功：学生 {} 选择了课程 {} ({})", studentId, courseId, course.getCourseName());
-            return true;
+        } catch (DataAccessException e) {
+            logger.error("选课数据库异常：学生 {} 课程 {} - {}", studentId, courseId, e.getMessage(), e);
+            return false;
         } catch (Exception e) {
             logger.error("选课异常：学生 {} 课程 {} - {}", studentId, courseId, e.getMessage(), e);
             return false;
@@ -132,7 +167,6 @@ public class SelectionServiceImpl implements SelectionService {
                 s.student_no,
                 s.name,
                 s.gender,
-                s.major,
                 sel.select_time
             FROM selection sel
             JOIN student s ON sel.student_id = s.id

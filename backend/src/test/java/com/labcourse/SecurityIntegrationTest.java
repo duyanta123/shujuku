@@ -1,12 +1,17 @@
 package com.labcourse;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.labcourse.entity.Admin;
 import com.labcourse.entity.Student;
+import com.labcourse.entity.Teacher;
+import com.labcourse.repository.AdminRepository;
+import com.labcourse.repository.LoginAttemptRepository;
 import com.labcourse.repository.StudentRepository;
+import com.labcourse.repository.TeacherRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -28,11 +33,19 @@ class SecurityIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
     private StudentRepository studentRepository;
+
+    @Autowired
+    private TeacherRepository teacherRepository;
+
+    @Autowired
+    private AdminRepository adminRepository;
+
+    @Autowired
+    private LoginAttemptRepository loginAttemptRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -42,15 +55,28 @@ class SecurityIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        loginAttemptRepository.deleteById("student:S001");
+        loginAttemptRepository.deleteById("teacher:T001");
+        loginAttemptRepository.deleteById("admin:admin");
+
         // 确保数据库有测试用户
         Optional<Student> studentOpt = studentRepository.findByStudentNo("S001");
         if (studentOpt.isPresent()) {
             Student student = studentOpt.get();
-            // 验证密码是否已加密
-            if (!student.getPassword().startsWith("$2a$")) {
-                student.setPassword(passwordEncoder.encode(student.getPassword()));
-                studentRepository.save(student);
-            }
+            student.setPassword(passwordEncoder.encode("123456"));
+            studentRepository.save(student);
+        }
+        Optional<Teacher> teacherOpt = teacherRepository.findByTeacherNo("T001");
+        if (teacherOpt.isPresent()) {
+            Teacher teacher = teacherOpt.get();
+            teacher.setPassword(passwordEncoder.encode("123456"));
+            teacherRepository.save(teacher);
+        }
+        Optional<Admin> adminOpt = adminRepository.findByUsername("admin");
+        if (adminOpt.isPresent()) {
+            Admin admin = adminOpt.get();
+            admin.setPassword(passwordEncoder.encode("123456"));
+            adminRepository.save(admin);
         }
     }
 

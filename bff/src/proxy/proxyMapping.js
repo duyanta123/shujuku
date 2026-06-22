@@ -29,6 +29,7 @@ const authenticatedPaths = [
   '/api/selection/',
   '/api/student/',
   '/api/teacher/',
+  '/api/user/',
 ]
 
 /**

@@ -85,13 +85,29 @@ export async function transparentProxyPlugin(app) {
       })
 
       try {
-        const response = await fetch(`${config.backendUrl}${url}`, {
+        const contentType = reqHeaders['content-type'] || ''
+
+        let fetchOptions = {
           method,
           headers: forwardHeaders,
-          ...(body && Object.keys(body).length > 0
-            ? { body: JSON.stringify(body) }
-            : {}),
-        })
+        }
+
+        if (contentType.includes('multipart/form-data')) {
+          // For multipart uploads, forward raw body buffer as-is
+          const boundary = contentType.split('boundary=')[1]
+          if (boundary && body) {
+            log.debug('代理转发：multipart 文件上传', {
+              requestId: request.id,
+              path,
+              bodySize: body.length,
+            })
+            fetchOptions.body = body // raw Buffer
+          }
+        } else if (body && Object.keys(body).length > 0) {
+          fetchOptions.body = JSON.stringify(body)
+        }
+
+        const response = await fetch(`${config.backendUrl}${url}`, fetchOptions)
 
         const proxyDuration = Date.now() - proxyStart
 
@@ -114,24 +130,24 @@ export async function transparentProxyPlugin(app) {
         })
 
         // 特殊处理非 JSON 响应（文件导出、Spring Security 错误页等）
-        const contentType = response.headers.get('content-type') || ''
-        if (contentType.includes('application/vnd.openxmlformats')
-          || contentType.includes('application/octet-stream')) {
+        const resContentType = response.headers.get('content-type') || ''
+        if (resContentType.includes('application/vnd.openxmlformats')
+          || resContentType.includes('application/octet-stream')) {
           log.debug('代理转发：二进制响应', {
             requestId: request.id,
-            contentType,
+            resContentType,
           })
           const buffer = await response.arrayBuffer()
           return reply.send(Buffer.from(buffer))
         }
 
         // 非 JSON 响应（如 Spring Security 默认 HTML 错误页）直接透传状态码
-        if (!contentType.includes('application/json')) {
+        if (!resContentType.includes('application/json')) {
           log.warn('代理转发：非 JSON 响应', {
             requestId: request.id,
             path,
             backendStatus: response.status,
-            contentType,
+            resContentType,
           })
           return { success: false, message: '权限不足', status: response.status }
         }

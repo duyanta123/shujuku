@@ -27,9 +27,6 @@ public class Major {
     @Column(name = "status", nullable = false, length = 20)
     private String status = "ACTIVE";
 
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
-
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
@@ -47,15 +44,11 @@ public class Major {
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
 
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
     }
 

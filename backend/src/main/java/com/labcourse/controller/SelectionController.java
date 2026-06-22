@@ -1,5 +1,7 @@
 package com.labcourse.controller;
 
+import com.labcourse.entity.Course;
+import com.labcourse.repository.CourseRepository;
 import com.labcourse.service.SelectionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +19,9 @@ public class SelectionController {
 
     @Autowired
     private SelectionService selectionService;
+
+    @Autowired
+    private CourseRepository courseRepository;
 
     @PostMapping("/add")
     public ResponseEntity<Map<String, Object>> add(@RequestBody Map<String, Long> data) {
@@ -66,6 +71,15 @@ public class SelectionController {
 
     @GetMapping("/studentList/{courseId}")
     public ResponseEntity<Map<String, Object>> studentList(@PathVariable Long courseId) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        Long teacherId = Long.valueOf(authentication.getPrincipal().toString());
+        Course course = courseRepository.findById(courseId).orElse(null);
+        if (course == null || !course.getTeacherId().equals(teacherId)) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", false);
+            result.put("message", "无权查看此课程的学生名单");
+            return ResponseEntity.status(403).body(result);
+        }
         Map<String, Object> result = new HashMap<>();
         List<Map<String, Object>> students = selectionService.getStudentList(courseId);
         result.put("success", true);
