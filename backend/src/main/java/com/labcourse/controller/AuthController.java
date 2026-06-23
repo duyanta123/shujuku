@@ -56,7 +56,14 @@ public class AuthController {
             return ResponseEntity.status(401).body(response);
         }
 
-        Long userId = Long.valueOf(claims.getSubject());
+        Long userId;
+        try {
+            userId = Long.valueOf(claims.getSubject());
+        } catch (NumberFormatException e) {
+            response.put("success", false);
+            response.put("message", "无效的用户标识");
+            return ResponseEntity.status(401).body(response);
+        }
 
         // 查找用户并验证 refreshToken 是否匹配（防止重放攻击）
         Optional<?> userOpt = findUserByRefreshToken(refreshToken);

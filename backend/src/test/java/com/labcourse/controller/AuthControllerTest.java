@@ -283,6 +283,28 @@ class AuthControllerTest {
     }
 
     // ================================================================
+    // refreshToken — 无效的 Subject（NumberFormatException 防护）
+    // ================================================================
+
+    @Test
+    @DisplayName("refreshToken: Subject 非数字应返回 401")
+    void refreshToken_InvalidSubject_ShouldReturn401() {
+        String refreshToken = "token_with_invalid_subject";
+
+        Claims claims = createClaimsStub("invalid_non_numeric_subject");
+        jwtUtil.setValidateRefreshTokenResult(claims);
+
+        ResponseEntity<Map<String, Object>> response = controller.refreshToken(
+                Map.of("refreshToken", refreshToken));
+
+        assertEquals(401, response.getStatusCode().value());
+        Map<String, Object> body = response.getBody();
+        assertNotNull(body);
+        assertFalse((Boolean) body.get("success"));
+        assertTrue(((String) body.get("message")).contains("无效的用户标识"));
+    }
+
+    // ================================================================
     // logout — 清除 Refresh Token
     // ================================================================
 

@@ -62,12 +62,22 @@ public class SelectionServiceImpl implements SelectionService {
             Optional<Student> studentOpt = studentRepository.findById(studentId);
             if (studentOpt.isPresent()) {
                 Student student = studentOpt.get();
-                if (student.getCollegeId() != null && course.getCollegeId() != null
-                        && !student.getCollegeId().equals(course.getCollegeId())) {
+                if (student.getCollegeId() == null) {
+                    logger.warn("选课失败：学生 {} 未设置学院", studentId);
+                    return false;
+                }
+                if (course.getCollegeId() == null) {
+                    logger.warn("选课失败：课程 {} 未设置所属学院", courseId);
+                    return false;
+                }
+                if (!student.getCollegeId().equals(course.getCollegeId())) {
                     logger.warn("选课失败：学生 {} 学院ID={} 与课程 {} 学院ID={} 不匹配，仅可选择本学院的选修课",
                             studentId, student.getCollegeId(), courseId, course.getCollegeId());
                     return false;
                 }
+            } else {
+                logger.warn("选课失败：学生 {} 不存在", studentId);
+                return false;
             }
 
             // Call stored procedure for conflict check, capacity check and insert

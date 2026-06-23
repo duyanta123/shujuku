@@ -213,7 +213,7 @@ public class UserServiceImpl implements UserService {
             throw new RuntimeException("缺少Authorization头或格式不正确");
         }
         String token = authHeader.substring(7);
-        if (jwtUtil.validateAccessToken(token) == null) {
+        if (!jwtUtil.validateToken(token)) {
             throw new RuntimeException("Token无效或已过期");
         }
         return token;

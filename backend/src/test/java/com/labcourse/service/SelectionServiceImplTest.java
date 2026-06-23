@@ -146,8 +146,8 @@ class SelectionServiceImplTest {
     }
 
     @Test
-    @DisplayName("addSelection: 课程无 collegeId 时跳过学院校验（存储过程返回 result_code=0）")
-    void addSelection_CourseNoCollegeId_ShouldSkipCollegeCheck() {
+    @DisplayName("addSelection: 课程无 collegeId 时应拒绝选课（强制校验）")
+    void addSelection_CourseNoCollegeId_ShouldReject() {
         Course course = new Course();
         course.setId(10L);
         course.setCourseType("ELECTIVE");
@@ -161,19 +161,47 @@ class SelectionServiceImplTest {
         when(courseRepository.findById(10L)).thenReturn(Optional.of(course));
         when(studentRepository.findById(2L)).thenReturn(Optional.of(student));
 
-        Map<String, Object> procResult = new HashMap<>();
-        procResult.put("p_result_code", 0);
-        procResult.put("p_result_msg", "选课成功");
+        boolean result = service.addSelection(2L, 10L);
+        assertFalse(result, "课程未设置学院时应拒绝选课");
+        verify(selectionRepository, never()).save(any());
+    }
 
-        try (MockedConstruction<SimpleJdbcCall> mocked = mockConstruction(SimpleJdbcCall.class,
-                (mock, ctx) -> {
-                    when(mock.withProcedureName(anyString())).thenReturn(mock);
-                    when(mock.declareParameters(any(SqlParameter[].class))).thenReturn(mock);
-                    when(mock.execute(any(SqlParameterSource.class))).thenReturn(procResult);
-                })) {
-            boolean result = service.addSelection(2L, 10L);
-            assertTrue(result, "课程无学院时应跳过学院校验");
-        }
+    @Test
+    @DisplayName("addSelection: 学生未设置学院应拒绝选课")
+    void addSelection_StudentNoCollegeId_ShouldReject() {
+        Course course = new Course();
+        course.setId(10L);
+        course.setCourseType("ELECTIVE");
+        course.setCollegeId(1L);
+        course.setMaxCount(30);
+
+        Student student = new Student();
+        student.setId(2L);
+        student.setCollegeId(null);  // 未设置学院
+
+        when(courseRepository.findById(10L)).thenReturn(Optional.of(course));
+        when(studentRepository.findById(2L)).thenReturn(Optional.of(student));
+
+        boolean result = service.addSelection(2L, 10L);
+        assertFalse(result, "学生未设置学院时应拒绝选课");
+        verify(selectionRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("addSelection: 学生不存在应拒绝选课")
+    void addSelection_StudentNotFound_ShouldReject() {
+        Course course = new Course();
+        course.setId(10L);
+        course.setCourseType("ELECTIVE");
+        course.setCollegeId(1L);
+        course.setMaxCount(30);
+
+        when(courseRepository.findById(10L)).thenReturn(Optional.of(course));
+        when(studentRepository.findById(999L)).thenReturn(Optional.empty());
+
+        boolean result = service.addSelection(999L, 10L);
+        assertFalse(result, "学生不存在时应拒绝选课");
+        verify(selectionRepository, never()).save(any());
     }
 
     // ================================================================
