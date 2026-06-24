@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -23,6 +24,8 @@ import java.util.stream.Collectors;
 public class MajorServiceImpl implements MajorService {
 
     private static final Logger logger = LoggerFactory.getLogger(MajorServiceImpl.class);
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("id", "name", "collegeId", "status", "updatedAt");
+    private static final Set<String> ALLOWED_STATUS = Set.of("ACTIVE", "INACTIVE", "all");
 
     @Autowired
     private MajorRepository majorRepository;
@@ -32,6 +35,7 @@ public class MajorServiceImpl implements MajorService {
 
     @Override
     public Map<String, Object> list(String name, Long collegeId, String status, int page, int size, String sortBy, String sortDir) {
+        validateListParams(collegeId, status, page, size, sortBy, sortDir);
         Sort sort = sortDir.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         PageRequest pageRequest = PageRequest.of(page, size, sort);
 
@@ -74,6 +78,27 @@ public class MajorServiceImpl implements MajorService {
         result.put("totalPages", majorPage.getTotalPages());
         result.put("currentPage", majorPage.getNumber());
         return result;
+    }
+
+    private void validateListParams(Long collegeId, String status, int page, int size, String sortBy, String sortDir) {
+        if (collegeId != null && collegeId <= 0) {
+            throw new IllegalArgumentException("collegeId 参数非法");
+        }
+        if (page < 0) {
+            throw new IllegalArgumentException("page 不能小于 0");
+        }
+        if (size < 1 || size > 1000) {
+            throw new IllegalArgumentException("size 范围为 1-1000");
+        }
+        if (!ALLOWED_SORT_FIELDS.contains(sortBy)) {
+            throw new IllegalArgumentException("sortBy 参数非法");
+        }
+        if (!"asc".equalsIgnoreCase(sortDir) && !"desc".equalsIgnoreCase(sortDir)) {
+            throw new IllegalArgumentException("sortDir 参数非法");
+        }
+        if (status != null && !ALLOWED_STATUS.contains(status)) {
+            throw new IllegalArgumentException("status 参数非法");
+        }
     }
 
     @Override

@@ -152,9 +152,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getCourseList } from '../../api/course'
+import { getMyTeachingCourses } from '../../api/course'
 import { getCourseAttendance, getAttendanceDates, updateAttendanceStatus, exportAttendance } from '../../api/attendance'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 
 const loading = ref(false)
 const courseList = ref([])
@@ -166,8 +166,6 @@ const modifyVisible = ref(false)
 const modifyTarget = ref(null)
 const modifyReason = ref('')
 const modifying = ref(false)
-
-const user = computed(() => JSON.parse(localStorage.getItem('user') || '{}'))
 
 const stats = computed(() => {
   const result = { attend: 0, late: 0, absent: 0, leave: 0, total: studentList.value.length }
@@ -190,11 +188,40 @@ function statusClass(status) {
   return map[status] || 's-default'
 }
 
+function safeCell(value) {
+  let text = value == null ? '' : String(value)
+  if (/^[=+\-@]/.test(text)) text = `'${text}`
+  return text.length > 32767 ? text.slice(0, 32767) : text
+}
+
+function safeFileName(name) {
+  return String(name || '课程')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80) || '课程'
+}
+
+async function downloadWorkbook(workbook, fileName) {
+  const buffer = await workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
 async function loadCourses() {
   try {
-    const result = await getCourseList()
+    const result = await getMyTeachingCourses()
     if (result.success) {
-      courseList.value = result.data.filter(c => c.teacher_name === user.value.name)
+      courseList.value = result.data || []
     }
   } catch {
     ElMessage.error('加载课程列表失败')
@@ -259,7 +286,6 @@ async function confirmModify() {
     const result = await updateAttendanceStatus({
       attendanceId: modifyTarget.value.attendanceId,
       newStatus: '请假',
-      teacherId: user.value.id,
       reason: modifyReason.value.trim()
     })
     if (result.success) {
@@ -284,21 +310,31 @@ async function exportExcel() {
       return
     }
 
-    const exportData = result.data.map(item => ({
-      '学号': item.studentNo,
-      '姓名': item.studentName,
-      '专业': item.major,
-      '课程': item.courseName,
-      '日期': item.attendanceDate,
-      '签到状态': item.status,
-      '签到时间': item.checkInTime ? formatTime(item.checkInTime) : ''
-    }))
-
     const courseName = courseList.value.find(c => c.id === selectedCourse.value)?.course_name || '课程'
-    const ws = XLSX.utils.json_to_sheet(exportData)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, '考勤记录')
-    XLSX.writeFile(wb, `${courseName}_考勤记录.xlsx`)
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('考勤记录')
+    worksheet.columns = [
+      { header: '学号', key: 'studentNo', width: 16 },
+      { header: '姓名', key: 'studentName', width: 14 },
+      { header: '专业', key: 'major', width: 16 },
+      { header: '课程', key: 'courseName', width: 24 },
+      { header: '日期', key: 'attendanceDate', width: 14 },
+      { header: '签到状态', key: 'status', width: 12 },
+      { header: '签到时间', key: 'checkInTime', width: 22 },
+    ]
+    worksheet.getRow(1).font = { bold: true }
+    result.data.forEach(item => {
+      worksheet.addRow({
+        studentNo: safeCell(item.studentNo),
+        studentName: safeCell(item.studentName),
+        major: safeCell(item.major),
+        courseName: safeCell(item.courseName),
+        attendanceDate: safeCell(item.attendanceDate),
+        status: safeCell(item.status),
+        checkInTime: safeCell(item.checkInTime ? formatTime(item.checkInTime) : ''),
+      })
+    })
+    await downloadWorkbook(workbook, `${safeFileName(courseName)}_考勤记录.xlsx`)
     ElMessage.success('导出成功')
   } catch {
     ElMessage.error('导出失败')

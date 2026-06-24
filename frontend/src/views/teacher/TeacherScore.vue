@@ -41,9 +41,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getCourseList } from '../../api/course'
+import { getMyTeachingCourses } from '../../api/course'
 import { getStudentList } from '../../api/selection'
 import { addScore } from '../../api/score'
 
@@ -51,13 +51,11 @@ const courseList = ref([])
 const studentList = ref([])
 const selectedCourse = ref('')
 
-const user = computed(() => JSON.parse(localStorage.getItem('user') || '{}'))
-
 const loadCourses = async () => {
   try {
-    const result = await getCourseList()
+    const result = await getMyTeachingCourses()
     if (result.success) {
-      courseList.value = result.data.filter(c => c.teacher_name === user.value.name)
+      courseList.value = result.data || []
     }
   } catch (error) {
     ElMessage.error('加载课程列表失败')

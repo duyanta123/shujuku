@@ -8,20 +8,17 @@ import com.labcourse.repository.CourseRepository;
 import com.labcourse.repository.TeacherRepository;
 import com.labcourse.service.LoginAttemptService;
 import com.labcourse.service.TeacherService;
+import com.labcourse.util.PasswordPolicy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.security.SecureRandom;
 import java.util.List;
 import java.util.Optional;
 
 @Service
 @SuppressWarnings("null")
 public class TeacherServiceImpl implements TeacherService {
-
-    private static final String CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    private static final SecureRandom RANDOM = new SecureRandom();
 
     @Autowired
     private TeacherRepository teacherRepository;
@@ -72,6 +69,7 @@ public class TeacherServiceImpl implements TeacherService {
 
     @Override
     public boolean save(Teacher teacher) {
+        PasswordPolicy.requireValid(teacher.getPassword());
         teacher.setPassword(passwordEncoder.encode(teacher.getPassword()));
         teacherRepository.save(teacher);
         return true;
@@ -95,6 +93,7 @@ public class TeacherServiceImpl implements TeacherService {
                 existing.setCollegeId(teacher.getCollegeId());
             }
             if (teacher.getPassword() != null && !teacher.getPassword().isEmpty()) {
+                PasswordPolicy.requireValid(teacher.getPassword());
                 existing.setPassword(passwordEncoder.encode(teacher.getPassword()));
             }
             teacherRepository.save(existing);
@@ -117,7 +116,7 @@ public class TeacherServiceImpl implements TeacherService {
         Optional<Teacher> existingOpt = teacherRepository.findById(id);
         if (existingOpt.isPresent()) {
             Teacher existing = existingOpt.get();
-            String newPassword = generateRandomPassword();
+            String newPassword = PasswordPolicy.generateTemporaryPassword();
             existing.setPassword(passwordEncoder.encode(newPassword));
             existing.setRefreshToken(null);
             teacherRepository.save(existing);
@@ -134,6 +133,7 @@ public class TeacherServiceImpl implements TeacherService {
             if (!passwordEncoder.matches(oldPassword, existing.getPassword())) {
                 return false;
             }
+            PasswordPolicy.requireValid(newPassword);
             existing.setPassword(passwordEncoder.encode(newPassword));
             existing.setRefreshToken(null);
             teacherRepository.save(existing);
@@ -142,11 +142,4 @@ public class TeacherServiceImpl implements TeacherService {
         return false;
     }
 
-    private String generateRandomPassword() {
-        StringBuilder sb = new StringBuilder(8);
-        for (int i = 0; i < 8; i++) {
-            sb.append(CHARS.charAt(RANDOM.nextInt(CHARS.length())));
-        }
-        return sb.toString();
-    }
 }

@@ -7,6 +7,13 @@ export function getCourseList() {
   })
 }
 
+export function getMyTeachingCourses() {
+  return request({
+    url: '/course/my',
+    method: 'get'
+  })
+}
+
 export function getCourseListSimple(collegeId) {
   const params = {}
   if (collegeId !== undefined && collegeId !== '') {

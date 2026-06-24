@@ -100,7 +100,8 @@ public class TeacherController {
         String newPassword = teacherService.resetPassword(id);
         if (newPassword != null) {
             result.put("success", true);
-            result.put("message", "密码已重置为: " + newPassword);
+            result.put("message", "密码重置成功");
+            result.put("data", Map.of("temporaryPassword", newPassword));
         } else {
             result.put("success", false);
             result.put("message", "重置失败，教师不存在");

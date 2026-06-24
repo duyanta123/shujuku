@@ -1,35 +1,59 @@
-/**
- * 统一日志工具
- * 提供带时间戳和模块标识的结构化日志输出
- */
-
 const MODULE_PREFIX = 'BFF'
 
-/**
- * 生成 ISO 格式时间戳
- */
 function timestamp() {
   return new Date().toISOString()
 }
 
-/**
- * 格式化日志消息
- * @param {string} module - 模块标识（如 JWT, PROXY, AUTH）
- * @param {string} level - 日志级别
- * @param {string} message - 日志消息
- * @param {object} [data] - 附加数据
- */
+function safeStringify(value) {
+  const seen = new WeakSet()
+  return JSON.stringify(value, (key, currentValue) => {
+    if (typeof currentValue === 'object' && currentValue !== null) {
+      if (seen.has(currentValue)) return '[Circular]'
+      seen.add(currentValue)
+    }
+    return currentValue
+  })
+}
+
+const DEFAULT_SENSITIVE_KEYS = [
+  'password',
+  'oldPassword',
+  'newPassword',
+  'token',
+  'accessToken',
+  'refreshToken',
+  'authorization',
+  'secret',
+  'query',
+]
+const DEFAULT_SENSITIVE_KEY_SET = new Set(DEFAULT_SENSITIVE_KEYS.map(key => key.toLowerCase()))
+
+function sanitizeUrl(value) {
+  if (typeof value !== 'string' || !value.includes('?')) return value
+
+  const [base, query = ''] = value.split('?')
+  const redacted = query.split('&').filter(Boolean).map((part) => {
+    const [key] = part.split('=')
+    if (DEFAULT_SENSITIVE_KEY_SET.has(decodeURIComponent(key || '').toLowerCase())) {
+      return `${key}=***`
+    }
+    return part
+  }).join('&')
+  return redacted ? `${base}?${redacted}` : base
+}
+
 function format(module, level, message, data) {
   const ts = timestamp()
   const prefix = `[${ts}] [${MODULE_PREFIX}:${module}] [${level}]`
 
   if (data) {
-    const dataStr = Object.entries(data)
+    const safeData = maskSensitive(data)
+    const dataStr = Object.entries(safeData)
       .map(([k, v]) => {
         if (typeof v === 'object') {
-          return `${k}=${JSON.stringify(v)}`
+          return `${k}=${safeStringify(v)}`
         }
-        return `${k}=${v}`
+        return `${k}=${sanitizeUrl(v)}`
       })
       .join(' | ')
     return `${prefix} ${message} | ${dataStr}`
@@ -38,10 +62,6 @@ function format(module, level, message, data) {
   return `${prefix} ${message}`
 }
 
-/**
- * 创建模块日志器
- * @param {string} module - 模块标识
- */
 export function createLogger(module) {
   return {
     info(message, data) {
@@ -61,18 +81,41 @@ export function createLogger(module) {
   }
 }
 
-/**
- * 脱敏处理：隐藏敏感信息
- */
-export function maskSensitive(obj, keys = ['password', 'token', 'secret']) {
+export function maskSensitive(obj, keys = [
+  ...DEFAULT_SENSITIVE_KEYS,
+]) {
   if (!obj || typeof obj !== 'object') return obj
-  const masked = { ...obj }
-  for (const key of keys) {
-    if (masked[key]) {
-      masked[key] = '***'
+
+  const sensitiveKeys = new Set(keys.map(key => key.toLowerCase()))
+  const seen = new WeakMap()
+
+  function mask(value, key) {
+    if (key && sensitiveKeys.has(key.toLowerCase())) {
+      return value === undefined || value === null || value === '' ? value : '***'
     }
+
+    if (!value || typeof value !== 'object') return value
+
+    if (seen.has(value)) return seen.get(value)
+
+    if (Array.isArray(value)) {
+      const result = []
+      seen.set(value, result)
+      for (const item of value) {
+        result.push(mask(item))
+      }
+      return result
+    }
+
+    const result = {}
+    seen.set(value, result)
+    for (const [childKey, childValue] of Object.entries(value)) {
+      result[childKey] = mask(childValue, childKey)
+    }
+    return result
   }
-  return masked
+
+  return mask(obj)
 }
 
 export default createLogger

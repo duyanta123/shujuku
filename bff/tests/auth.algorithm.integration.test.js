@@ -12,11 +12,12 @@
  * 但 auth.js refresh 端点 line 175 仅配置了 algorithms: ['HS256']，
  * 当后端使用 48 字节密钥自动生成 HS384 Token 时，BFF 刷新会拒绝合法 Token。
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
 import jwt from 'jsonwebtoken'
 import { config } from '../src/config.js'
 
 let app
+const originalFetch = globalThis.fetch
 
 // 使用与生产环境一致的密钥长度（48字节 → HS384）
 const SECRET_48 = 'test-secret-for-hs384-48bytes-minimum!!'
@@ -30,6 +31,40 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (app) await app.close()
+})
+
+beforeEach(() => {
+  globalThis.fetch = vi.fn((url, options) => {
+    if (String(url).endsWith('/api/auth/refresh')) {
+      const accessToken = jwt.sign(
+        { userId: 1, username: 'testuser', role: 'student' },
+        config.jwt.secret,
+        { algorithm: 'HS256', expiresIn: '30m' }
+      )
+      const refreshToken = jwt.sign(
+        { userId: 1, username: 'testuser', role: 'student' },
+        config.jwt.secret,
+        { algorithm: 'HS256', expiresIn: '7d' }
+      )
+      return Promise.resolve({
+        status: 200,
+        headers: {
+          get: (key) => key.toLowerCase() === 'content-type' ? 'application/json' : null,
+        },
+        json: async () => ({
+          success: true,
+          accessToken,
+          refreshToken,
+        }),
+      })
+    }
+    return originalFetch(url, options)
+  })
+})
+
+afterEach(() => {
+  globalThis.fetch = originalFetch
+  vi.restoreAllMocks()
 })
 
 // ============================================================================

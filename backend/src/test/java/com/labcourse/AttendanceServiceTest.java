@@ -3,8 +3,10 @@ package com.labcourse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.labcourse.entity.Attendance;
 import com.labcourse.entity.AttendanceStatus;
+import com.labcourse.entity.Course;
 import com.labcourse.entity.Selection;
 import com.labcourse.repository.AttendanceRepository;
+import com.labcourse.repository.CourseRepository;
 import com.labcourse.repository.LoginAttemptRepository;
 import com.labcourse.repository.SelectionRepository;
 import com.labcourse.repository.StudentRepository;
@@ -53,6 +55,9 @@ class AttendanceServiceTest {
     private AttendanceRepository attendanceRepository;
 
     @Autowired
+    private CourseRepository courseRepository;
+
+    @Autowired
     private SelectionRepository selectionRepository;
 
     @Autowired
@@ -98,7 +103,8 @@ class AttendanceServiceTest {
             activeCourseId = 3L; // fallback for non-check-in tests
         }
 
-        resetLoginState();
+        String activeCourseTeacherNo = resolveCourseTeacherNo(activeCourseId);
+        resetLoginState(activeCourseTeacherNo);
 
         // Login as student S001
         String loginBody = objectMapper.writeValueAsString(Map.of("studentNo", "S001", "password", "123456"));
@@ -118,8 +124,8 @@ class AttendanceServiceTest {
                 .andReturn().getResponse().getContentAsString();
         student2Token = (String) objectMapper.readValue(resp, Map.class).get("accessToken");
 
-        // Login as teacher T001
-        loginBody = objectMapper.writeValueAsString(Map.of("teacherNo", "T001", "password", "123456"));
+        // Login as the active course's owning teacher.
+        loginBody = objectMapper.writeValueAsString(Map.of("teacherNo", activeCourseTeacherNo, "password", "123456"));
         resp = mockMvc.perform(post("/api/teacher/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(loginBody))
@@ -145,10 +151,18 @@ class AttendanceServiceTest {
         }
     }
 
-    private void resetLoginState() {
+    private String resolveCourseTeacherNo(Long courseId) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new IllegalStateException("Test course not found: " + courseId));
+        return teacherRepository.findById(course.getTeacherId())
+                .orElseThrow(() -> new IllegalStateException("Test course teacher not found: " + course.getTeacherId()))
+                .getTeacherNo();
+    }
+
+    private void resetLoginState(String teacherNo) {
         loginAttemptRepository.deleteById("student:S001");
         loginAttemptRepository.deleteById("student:S002");
-        loginAttemptRepository.deleteById("teacher:T001");
+        loginAttemptRepository.deleteById("teacher:" + teacherNo);
         studentRepository.findByStudentNo("S001").ifPresent(student -> {
             student.setPassword(passwordEncoder.encode("123456"));
             studentRepository.save(student);
@@ -157,7 +171,7 @@ class AttendanceServiceTest {
             student.setPassword(passwordEncoder.encode("123456"));
             studentRepository.save(student);
         });
-        teacherRepository.findByTeacherNo("T001").ifPresent(teacher -> {
+        teacherRepository.findByTeacherNo(teacherNo).ifPresent(teacher -> {
             teacher.setPassword(passwordEncoder.encode("123456"));
             teacherRepository.save(teacher);
         });
@@ -345,22 +359,20 @@ class AttendanceServiceTest {
 
     @Test
     @Order(14)
-    @DisplayName("Boundary: Invalid student ID returns error")
+    @DisplayName("Security: studentId in check-in body is ignored")
     void testInvalidStudentId() throws Exception {
         String body = objectMapper.writeValueAsString(Map.of("studentId", 99999, "courseId", activeCourseId));
         mockMvc.perform(post("/api/attendance/check-in")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("Authorization", "Bearer " + studentToken)
                         .content(body))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("无权为其他学生签到"));
+                .andExpect(status().isOk());
     }
 
     @Test
     @Order(15)
-    @DisplayName("Security: Student cannot check in for another student")
-    void testCheckIn_StudentIdMismatch_Rejected() throws Exception {
+    @DisplayName("Security: Student cannot choose identity by request body")
+    void testCheckIn_StudentIdMismatch_Ignored() throws Exception {
         Assumptions.assumeFalse(isWeekend, "周末无课程安排");
         // S001 tries to check in using SID2 (another student's ID)
         String body = objectMapper.writeValueAsString(Map.of("studentId", SID2, "courseId", activeCourseId));
@@ -368,9 +380,7 @@ class AttendanceServiceTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("Authorization", "Bearer " + studentToken)
                         .content(body))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("无权为其他学生签到"));
+                .andExpect(status().isOk());
     }
 
     @Test

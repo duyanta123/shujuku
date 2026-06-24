@@ -151,8 +151,8 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getMyCourses } from '../../api/selection'
 import { checkIn, getServerTime, getAttendanceHistory } from '../../api/attendance'
-import { getCourseList } from '../../api/course'
-import { enqueueCheckIn, getQueue, removeFromQueue, getQueueSize, clearQueue } from '../../utils/offlineCheckin'
+import { enqueueCheckIn, getQueue, removeFromQueue, getQueueSize } from '../../utils/offlineCheckin'
+import { parseCourseTime } from '../../utils/scheduleParser'
 
 const loading = ref(false)
 const courseList = ref([])
@@ -163,10 +163,6 @@ const offlineCount = ref(0)
 let timeTimer = null
 let syncTimer = null
 
-const user = computed(() => JSON.parse(localStorage.getItem('user') || '{}'))
-
-const dayOfWeekNames = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日']
-
 function formatTime(str) {
   if (!str) return ''
   return str.replace('T', ' ').substring(0, 19)
@@ -174,14 +170,7 @@ function formatTime(str) {
 
 function isTodayCourse(course) {
   const today = new Date().getDay() || 7
-  if (!course.courseTime) return false
-  const slots = course.courseTime.split(/[,，]/).map(s => s.trim())
-  return slots.some(slot => {
-    for (let i = 1; i <= 7; i++) {
-      if (slot.includes(dayOfWeekNames[i]) && i === today) return true
-    }
-    return false
-  })
+  return parseCourseTime(course.courseTime).some(slot => slot.day === today)
 }
 
 function canCheckIn(course) {
@@ -241,7 +230,7 @@ async function loadCourses() {
       const courses = result.data
       // 获取今天的签到状态
       const today = new Date().toISOString().split('T')[0]
-      const historyRes = await getAttendanceHistory(user.value.id).catch(() => ({ data: [] }))
+      const historyRes = await getAttendanceHistory().catch(() => ({ data: [] }))
       const todayRecords = (historyRes.data || []).filter(r => {
         if (!r.attendanceDate) return false
         return r.attendanceDate === today
@@ -272,10 +261,7 @@ async function loadCourses() {
 async function handleCheckIn(course) {
   course.checking = true
   try {
-    const result = await checkIn({
-      studentId: user.value.id,
-      courseId: course.courseId
-    })
+    const result = await checkIn({ courseId: course.courseId })
     lastResult.value = result
     resultVisible.value = true
 
@@ -287,7 +273,7 @@ async function handleCheckIn(course) {
     }
   } catch {
     // 网络异常，加入离线队列
-    enqueueCheckIn(user.value.id, course.courseId)
+    enqueueCheckIn(course.courseId)
     offlineCount.value = getQueueSize()
     ElMessage.warning('网络异常，签到已暂存，网络恢复后自动同步')
     course.checking = false
@@ -298,28 +284,22 @@ async function handleCheckIn(course) {
 }
 
 async function syncOffline() {
-  let queue = getQueue()
-  // 过滤掉无效数据（修复前遗留的 undefined courseId 等）
-  const validItems = queue.filter(item => item.studentId != null && item.courseId != null)
-  if (validItems.length < queue.length) {
-    // 清理无效条目，只保留有效数据
-    clearQueue()
-    validItems.forEach(item => enqueueCheckIn(item.studentId, item.courseId))
-  }
-  queue = getQueue()
+  const queue = getQueue()
   if (queue.length === 0) return
 
   let synced = 0
   let failed = 0
   for (const item of [...queue]) {
     try {
-      await checkIn({ studentId: item.studentId, courseId: item.courseId })
-      removeFromQueue(item.studentId, item.courseId)
+      await checkIn({ courseId: item.courseId })
+      removeFromQueue(item.courseId)
       synced++
-    } catch {
-      // 同步失败（如参数无效或业务拒绝），移除该条目避免反复重试
-      removeFromQueue(item.studentId, item.courseId)
-      failed++
+    } catch (error) {
+      const status = error.response?.status
+      if (status >= 400 && status < 500) {
+        removeFromQueue(item.courseId)
+        failed++
+      }
     }
   }
   offlineCount.value = getQueueSize()

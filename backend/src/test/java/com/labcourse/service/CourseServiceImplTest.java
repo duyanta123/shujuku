@@ -236,6 +236,8 @@ class CourseServiceImplTest {
     void save_ShouldSucceed() {
         Course course = new Course();
         course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(30);
 
         boolean result = service.save(course);
         assertTrue(result);

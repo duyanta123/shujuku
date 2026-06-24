@@ -10,7 +10,7 @@
       <!-- Avatar Section -->
       <div class="avatar-section">
         <div class="avatar-wrapper" :class="{ 'has-image': avatarUrl }">
-          <img v-if="avatarUrl" :src="avatarUrl" alt="avatar" class="avatar-img" />
+          <img v-if="avatarUrl" :src="avatarUrl" alt="avatar" class="avatar-img" @error="onPreviewError" />
           <img v-else :src="placeholderSvg" alt="placeholder" class="avatar-img" />
           <div class="avatar-overlay" @click="triggerFileInput">
             <span class="overlay-text">更换头像</span>
@@ -187,21 +187,42 @@ function triggerFileInput() {
   fileInput.value?.click()
 }
 
+function onPreviewError(event) {
+  event.target.src = placeholderSvg.value
+}
+
 const cropToSquare = (file) => {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = new Image()
+    const objectUrl = URL.createObjectURL(file)
     img.onload = () => {
-      const size = Math.min(img.width, img.height)
-      const sx = (img.width - size) / 2
-      const sy = (img.height - size) / 2
-      const canvas = document.createElement('canvas')
-      canvas.width = 200
-      canvas.height = 200
-      const ctx = canvas.getContext('2d')
-      ctx.drawImage(img, sx, sy, size, size, 0, 0, 200, 200)
-      canvas.toBlob((blob) => resolve(blob), 'image/png')
+      try {
+        const size = Math.min(img.width, img.height)
+        const sx = (img.width - size) / 2
+        const sy = (img.height - size) / 2
+        const canvas = document.createElement('canvas')
+        canvas.width = 200
+        canvas.height = 200
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, sx, sy, size, size, 0, 0, 200, 200)
+        canvas.toBlob((blob) => {
+          URL.revokeObjectURL(objectUrl)
+          if (!blob) {
+            reject(new Error('图片处理失败'))
+            return
+          }
+          resolve(blob)
+        }, 'image/png')
+      } catch (error) {
+        URL.revokeObjectURL(objectUrl)
+        reject(error)
+      }
     }
-    img.src = URL.createObjectURL(file)
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      reject(new Error('图片加载失败'))
+    }
+    img.src = objectUrl
   })
 }
 

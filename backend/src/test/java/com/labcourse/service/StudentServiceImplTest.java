@@ -87,10 +87,10 @@ class StudentServiceImplTest {
         Student student = new Student();
         student.setStudentNo("S100");
         student.setName("新学生");
-        student.setPassword("rawPassword");
+        student.setPassword("RawPass1!");
         student.setMajorId(1L);
 
-        when(passwordEncoder.encode("rawPassword")).thenReturn("encodedPassword");
+        when(passwordEncoder.encode("RawPass1!")).thenReturn("encodedPassword");
 
         // 必修课配置
         MajorRequiredCourse mrc = new MajorRequiredCourse();
@@ -121,10 +121,10 @@ class StudentServiceImplTest {
     void save_NoMajorId_ShouldNotAssignRequiredCourses() {
         Student student = new Student();
         student.setStudentNo("S101");
-        student.setPassword("rawPassword");
+        student.setPassword("RawPass1!");
         student.setMajorId(null);
 
-        when(passwordEncoder.encode("rawPassword")).thenReturn("encodedPassword");
+        when(passwordEncoder.encode("RawPass1!")).thenReturn("encodedPassword");
 
         boolean result = service.save(student);
         assertTrue(result);
@@ -137,10 +137,10 @@ class StudentServiceImplTest {
     void save_MajorHasNoRequiredCourses_ShouldSucceed() {
         Student student = new Student();
         student.setStudentNo("S102");
-        student.setPassword("rawPassword");
+        student.setPassword("RawPass1!");
         student.setMajorId(99L);
 
-        when(passwordEncoder.encode("rawPassword")).thenReturn("encodedPassword");
+        when(passwordEncoder.encode("RawPass1!")).thenReturn("encodedPassword");
         when(majorRequiredCourseRepository.findByMajorId(99L)).thenReturn(List.of());
 
         boolean result = service.save(student);
@@ -335,15 +335,15 @@ class StudentServiceImplTest {
 
         Student update = new Student();
         update.setId(1L);
-        update.setPassword("newRawPassword");
+        update.setPassword("NewPass1!");
 
         when(studentRepository.findById(1L)).thenReturn(Optional.of(existing));
-        when(passwordEncoder.encode("newRawPassword")).thenReturn("newEncoded");
+        when(passwordEncoder.encode("NewPass1!")).thenReturn("newEncoded");
 
         boolean result = service.updateById(update);
         assertTrue(result);
         assertEquals("newEncoded", existing.getPassword());
-        verify(passwordEncoder).encode("newRawPassword");
+        verify(passwordEncoder).encode("NewPass1!");
     }
 
     @Test
@@ -415,7 +415,7 @@ class StudentServiceImplTest {
     void assignRequiredCourses_CourseNotFound_ShouldSkip() {
         Student student = new Student();
         student.setStudentNo("S200");
-        student.setPassword("raw");
+        student.setPassword("RawPass1!");
         student.setMajorId(5L);
 
         MajorRequiredCourse mrc = new MajorRequiredCourse();
@@ -436,7 +436,7 @@ class StudentServiceImplTest {
     void assignRequiredCourses_ExistingSelection_ShouldSkip() {
         Student student = new Student();
         student.setStudentNo("S201");
-        student.setPassword("raw");
+        student.setPassword("RawPass1!");
         student.setMajorId(6L);
 
         MajorRequiredCourse mrc = new MajorRequiredCourse();

@@ -31,11 +31,9 @@ test.describe('权限与路由测试', () => {
     ).then(() => true).catch(() => false);
     await page.goto(`${BASE_URL}/admin/college-major`);
     await page.waitForLoadState('networkidle');
-    // BFF模式下页面可渲染（URL 保持在 college-major）
-    await expect(page).toHaveURL(/.*college-major.*/);
-    // 验证后端 API 返回 403（权限不足）
+    await expect(page).toHaveURL(/.*student\/course.*/);
     const has403 = await apiFailed;
-    expect(has403).toBe(true);
+    expect(has403).toBe(false);
   });
 
   test('teacher登录后侧边栏无学院专业管理菜单', async ({ page }) => {
@@ -53,11 +51,9 @@ test.describe('权限与路由测试', () => {
     ).then(() => true).catch(() => false);
     await page.goto(`${BASE_URL}/admin/college-major`);
     await page.waitForLoadState('networkidle');
-    // BFF模式下页面可渲染（URL 保持在 college-major）
-    await expect(page).toHaveURL(/.*college-major.*/);
-    // 验证后端 API 返回 403（权限不足）
+    await expect(page).toHaveURL(/.*teacher\/course.*/);
     const has403 = await apiFailed;
-    expect(has403).toBe(true);
+    expect(has403).toBe(false);
   });
 
   test('未登录用户访问管理页面自动跳转登录页', async ({ page }) => {

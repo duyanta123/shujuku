@@ -77,7 +77,7 @@ export function detectConflict(timeA, timeB) {
   for (const a of slotsA) {
     for (const b of slotsB) {
       if (a.day === b.day) {
-        const overlap = a.startPeriod < b.endPeriod && b.startPeriod < a.endPeriod
+        const overlap = a.startPeriod <= b.endPeriod && b.startPeriod <= a.endPeriod
         if (overlap) {
           conflicts.push({
             a: { dayName: a.dayName, periods: a.periods },

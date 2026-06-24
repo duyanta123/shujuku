@@ -1,104 +1,114 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/router'
-import tokenManager from './tokenManager'
 
 const request = axios.create({
   baseURL: '/api',
   timeout: 10000,
-  withCredentials: true, // BFF 模式：携带 Cookie
+  withCredentials: true,
 })
 
-// BFF 模式标记
-const BFF_ENABLED = import.meta.env.VITE_BFF_ENABLED !== 'false'
+let refreshPromise = null
 
-let isRefreshing = false
-let requestQueue = []
+function isAuthEndpoint(config) {
+  const url = config?.url || ''
+  return url.includes('/auth/refresh')
+    || url.includes('/student/login')
+    || url.includes('/teacher/login')
+    || url.includes('/admin/login')
+}
 
-const processQueue = (error, token = null) => {
-  requestQueue.forEach(promise => {
-    if (error) {
-      promise.reject(error)
-    } else {
-      promise.resolve(token)
-    }
-  })
-  requestQueue = []
+function shouldSkipAuthRefresh(config) {
+  return Boolean(config?.skipAuthRefresh)
+}
+
+function shouldSkipErrorMessage(config) {
+  return Boolean(config?.skipErrorMessage)
+}
+
+function shouldSkipAuthRedirect(config) {
+  return Boolean(config?.skipAuthRedirect)
+}
+
+function showError(config, message) {
+  if (!shouldSkipErrorMessage(config)) {
+    ElMessage.error(message)
+  }
+}
+
+async function refreshSession() {
+  if (!refreshPromise) {
+    refreshPromise = axios.post('/api/auth/refresh', {}, { withCredentials: true })
+      .finally(() => {
+        refreshPromise = null
+      })
+  }
+  return refreshPromise
+}
+
+async function clearSessionAndRedirect() {
+  localStorage.removeItem('user')
+  try {
+    const { default: userStore } = await import('@/stores/userStore')
+    userStore.reset()
+  } catch {
+    // Route cleanup still proceeds if the store cannot be loaded.
+  }
+  if (router.currentRoute.value.path !== '/login') {
+    router.push('/login')
+  }
 }
 
 request.interceptors.request.use(
-  async config => {
-    if (BFF_ENABLED) {
-      // BFF 模式：Cookie 自动携带，无需手动管理 Token
-      tokenManager.refreshTokenIfNeeded()
-      return config
+  config => {
+    config.withCredentials = true
+    if (config.headers) {
+      delete config.headers.Authorization
+      delete config.headers.authorization
     }
-
-    // 降级模式：保持原有 Token 管理逻辑
-    let token = tokenManager.getToken()
-
-    if (token && tokenManager.isTokenAboutToExpire()) {
-      if (!isRefreshing) {
-        isRefreshing = true
-        try {
-          const newToken = await tokenManager.refreshTokenIfNeeded()
-          processQueue(null, newToken)
-        } catch (error) {
-          processQueue(error, null)
-          if (error.response?.status === 401) {
-            ElMessage.warning('登录已过期，请重新登录')
-            tokenManager.clearToken()
-            router.push('/login')
-          }
-        } finally {
-          isRefreshing = false
-        }
-      } else {
-        return new Promise((resolve, reject) => {
-          requestQueue.push({
-            resolve: (token) => {
-              config.headers.Authorization = `Bearer ${token}`
-              resolve(config)
-            },
-            reject: (error) => {
-              reject(error)
-            }
-          })
-        })
-      }
-    }
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
-
     return config
   },
-  error => {
-    return Promise.reject(error)
-  }
+  error => Promise.reject(error)
 )
 
 request.interceptors.response.use(
-  response => {
-    return response.data
-  },
-  error => {
-    if (error.response && error.response.status === 401) {
-      ElMessage.error('登录已过期，请重新登录')
-      tokenManager.clearToken()
-      router.push('/login')
-    } else if (error.response && error.response.status === 403) {
-      ElMessage.error('没有权限执行此操作')
-    } else if (error.response && error.response.status === 423) {
-      const data = error.response.data
-      const msg = data.message || '账号已被锁定'
-      ElMessage.error(msg)
+  response => response.data,
+  async error => {
+    const status = error.response?.status
+    const originalConfig = error.config || {}
+
+    if (
+      status === 401
+      && !originalConfig._retry
+      && !isAuthEndpoint(originalConfig)
+      && !shouldSkipAuthRefresh(originalConfig)
+    ) {
+      originalConfig._retry = true
+      try {
+        await refreshSession()
+        return request(originalConfig)
+      } catch (refreshError) {
+        showError(originalConfig, '登录已过期，请重新登录')
+        await clearSessionAndRedirect()
+        return Promise.reject(refreshError)
+      }
+    }
+
+    if (status === 401) {
+      if (shouldSkipAuthRedirect(originalConfig)) {
+        return Promise.reject(error)
+      }
+      await clearSessionAndRedirect()
+    } else if (status === 403) {
+      showError(originalConfig, '没有权限执行此操作')
+    } else if (status === 423) {
+      const msg = error.response?.data?.message || '账号已被锁定'
+      showError(originalConfig, msg)
     } else if (!error.response) {
-      ElMessage.error('网络连接失败，请检查网络')
+      showError(originalConfig, '网络连接失败，请检查网络')
     } else {
       const message = error.response?.data?.message || '请求失败'
-      ElMessage.error(message)
+      showError(originalConfig, message)
     }
     return Promise.reject(error)
   }

@@ -50,7 +50,7 @@
 
 ### 项目亮点
 
-- **JWT 双Token 无状态认证**：BFF 模式使用 HttpOnly Cookie 存储，支持自动刷新轮转，安全可靠
+- **JWT 双Token 无状态认证**：BFF 模式使用 HttpOnly Cookie 存储，refresh 仅接受 `bff_refresh_token`，支持自动刷新轮转
 - **BCrypt 密码加密**：所有密码经 BCrypt 哈希存储，启动时自动迁移明文密码
 - **三层架构**：前端 (Vue 3) + BFF 中间层 (Fastify) + 后端 (Spring Boot)，安全隔离
 - **登录安全防护**：15 分钟内连续失败 5 次自动锁定 30 分钟（数据库持久化）
@@ -58,10 +58,10 @@
 - **离线签到队列**：网络异常时暂存签到请求，恢复后自动同步
 - **课表可视化**：解析课程时间并生成周课表，支持选课时间冲突检测
 - **学院/专业管理层级模型**：引入 college 和 major 独立表，支持级联下拉、软删除
-- **密码强度校验**：前端实时校验密码复杂度（需包含大小写字母、数字、特殊符号中至少三种）
+- **密码强度校验**：前后端一致校验密码复杂度（需包含大小写字母、数字、特殊符号中至少三种）
 - **RBAC 权限控制**：基于 Spring Security 的三级角色权限模型，接口级细粒度控制
 - **CI/CD 自动化**：GitHub Actions 自动运行 JUnit 测试与 API 集成测试
-- **生产环境配置**：提供独立的 `application-prod.yml`，包含连接池、日志滚动、压缩等生产级配置
+- **生产环境配置**：提供独立的 `application-prod.yml`，启动时拒绝缺失或危险的生产凭据
 
 ---
 
@@ -104,15 +104,21 @@
 | 特性 | 描述 |
 |------|------|
 | JWT 双Token 认证 | BFF 模式使用 HttpOnly Cookie 存储 Access Token (30min) + Refresh Token (7d) |
+| BFF Token 边界 | `/api/auth/refresh` 只接受 `bff_refresh_token` Cookie，不接受 Authorization Header 或旧版 `bff_token` |
 | BCrypt 加密 | 密码使用 BCrypt 不可逆加密存储 |
 | 密码迁移 | 首次启动自动将数据库中明文密码升级为 BCrypt |
+| 密码复杂度 | 前后端均校验 8-20 位、无空格、大小写/数字/特殊符号至少三类 |
 | 登录锁定 | 同一账号 15 分钟内失败 5 次，锁定 30 分钟（数据库持久化） |
+| 生产配置校验 | `prod` profile 下数据库凭据必须显式配置，拒绝 `root` / `123456` / `demo` 等演示配置 |
+| 默认账号隔离 | demo seed 账号仅用于本地演示，生产环境不得导入 |
 | 全局异常处理 | 统一异常拦截，返回标准化错误响应 |
-| 参数校验 | 使用 `@Valid` 和 Spring Validation 进行请求参数校验 |
+| 参数校验 | 使用 `@Valid`、Spring Validation 和服务层白名单校验分页/排序/外键参数 |
+| 敏感日志脱敏 | BFF 日志统一脱敏 Authorization、Token、密码、查询参数等敏感字段 |
 | CORS 保护 | 仅允许前端/BFF 开发服务器来源的跨域请求 |
 | Helmet 安全头 | CSP、X-Frame-Options 等安全头 (BFF) |
 | 速率限制 | 全局 100次/分钟/IP (BFF) |
 | Token 轮转 | Refresh Token 使用后立即失效，颁发新 Token 对 |
+| 测试数据清理隔离 | `/api/admin/cleanup-test-data` 仅在 `dev` / `test` profile 注册 |
 
 ---
 
@@ -280,7 +286,7 @@ d:\789\
 │   ├── src/main/resources/
 │   │   ├── application.yml            # 默认配置
 │   │   └── application-prod.yml       # 生产环境配置
-│   ├── src/test/java/com/labcourse/   # 25 个测试类
+│   ├── src/test/java/com/labcourse/   # 28 个测试类
 │   └── pom.xml
 │
 ├── bff/                               # BFF 中间层 (Fastify 4.28.0)
@@ -371,7 +377,9 @@ mysql> source d:/789/database/init_database.sql
 - 创建 `lab_course_system` 数据库（utf8mb4 编码）
 - 创建 12 张数据/安全表 + 1 张审计日志表，含外键约束和索引
 - 创建存储过程、视图与触发器
-- 插入种子数据：1 个管理员、3 位教师、5 名学生、5 间实验室、5 门课程
+- 插入本地演示种子数据：1 个管理员、3 位教师、5 名学生、5 间实验室、5 门课程
+
+> 生产环境不得导入包含默认账号的 demo seed 数据。生产初始化应使用单独脚本或迁移流程创建必要结构，并为管理员、教师、学生账号设置强密码。
 
 #### 2.2 验证数据库
 
@@ -402,6 +410,9 @@ $env:JWT_SECRET="replace-with-at-least-32-random-characters"
 ```
 
 `JWT_SECRET` 必须显式配置；测试环境由 Maven Surefire 单独注入，生产/本地启动不要使用弱默认密钥。
+
+生产环境使用 `application-prod.yml` 时，`DB_USERNAME` 和 `DB_PASSWORD` 必须通过环境变量或部署平台显式配置，且不能使用 `root` / `123456` / `demo` 等演示凭据。
+启动校验会在 `prod` profile 下拒绝缺失数据库凭据、弱 JWT 密钥和演示账号配置。
 
 ### 步骤 4：配置前端
 
@@ -457,11 +468,16 @@ cd bff
 # 安装依赖（仅首次）
 npm install
 
+# 配置环境变量（首次启动前）
+cp .env.example .env
+# 编辑 .env，将 JWT_SECRET 改为至少 32 位随机强密钥
+
 # 启动开发模式
 npm run dev
 ```
 
 BFF 服务运行在 `http://localhost:4000`。
+`JWT_SECRET` 必须与后端使用同一个密钥，否则 BFF 无法验证后端签发的 Token。
 
 ### 启动前端
 
@@ -484,7 +500,7 @@ VITE v5.4.11  ready in XXX ms
 
 ### 访问系统
 
-打开浏览器访问 **http://localhost:3000**，使用以下默认账号登录：
+打开浏览器访问 **http://localhost:3000**，使用以下本地演示账号登录：
 
 | 角色 | 账号 | 密码 | 说明 |
 |------|------|------|------|
@@ -496,6 +512,7 @@ VITE v5.4.11  ready in XXX ms
 | 学生 | S002 | 123456 | 李小红 (软件工程) |
 
 > **注意**：
+> - 上表账号仅用于本地演示数据库。生产环境不得导入包含默认账号的 demo seed 数据，必须使用独立的生产初始化与强密码。
 > - 首次启动时，`PasswordMigration` 会自动将数据库中的明文密码升级为 BCrypt 加密存储，后续启动不会重复迁移。
 > - 默认使用 BFF 模式（`VITE_BFF_ENABLED=true`），前端请求通过 BFF 代理到后端。如需直连后端，修改 `frontend/.env.development` 中 `VITE_BFF_ENABLED=false`。
 
@@ -526,19 +543,21 @@ VITE v5.4.11  ready in XXX ms
 ### 管理员端操作流程
 
 1. **登录**：使用 `admin` 和密码 `123456` 登录，进入管理后台
-2. **学生管理**：增删改查学生账号，设置密码时前端会校验密码强度
+2. **学生管理**：增删改查学生账号，设置密码时前后端都会校验密码强度
 3. **教师管理**：增删改查教师账号
 4. **课程管理**：创建课程时关联教师和实验室，设置上课时间格式如 `周一 1-2节`
 5. **实验室管理**：管理实验室名称、地点和容量
 
 ### 密码校验规则
 
-新增或修改学生/教师密码时，系统要求密码满足以下条件：
+新增、修改学生/教师密码，以及通用改密和重置后生成的临时密码，系统要求满足以下条件：
 
 - 长度 8-20 个字符
 - 不能包含空格
 - 必须包含大小写字母、数字、特殊符号中至少**三种**
 - 必须输入两次确认密码且一致
+
+后端使用同一套规则兜底校验；校验失败时接口返回业务错误，不会只依赖前端表单。
 
 ---
 
@@ -546,10 +565,12 @@ VITE v5.4.11  ready in XXX ms
 
 ### 基础信息
 
-- **Base URL**：`http://localhost:8080/api`
+- **默认 Base URL (BFF 模式)**：前端请求 `/api`，经 `http://localhost:4000` 转发到后端
+- **后端直连 Base URL**：`http://localhost:8080/api`
 - **Content-Type**：`application/json`
-- **认证方式**：Bearer Token（JWT）
-- **Token 有效期**：24 小时（可配置）
+- **默认认证方式**：BFF 使用 HttpOnly Cookie 保存 `bff_access_token` 和 `bff_refresh_token`
+- **后端直连认证方式**：Bearer Token（JWT）
+- **Token 有效期**：Access Token 30 分钟，Refresh Token 7 天
 
 ### 通用响应格式
 
@@ -583,8 +604,16 @@ VITE v5.4.11  ready in XXX ms
 | POST | `/api/student/login` | 否 | 学生登录 |
 | POST | `/api/teacher/login` | 否 | 教师登录 |
 | POST | `/api/admin/login` | 否 | 管理员登录 |
-| POST | `/api/auth/refresh` | 是 | 刷新 Token |
+| POST | `/api/auth/refresh` | Cookie | BFF 模式刷新 Token，仅接受 `bff_refresh_token` |
 | GET | `/api/auth/validate` | 是 | 验证 Token 有效性 |
+
+### 管理与测试接口
+
+| 方法 | 路径 | 角色 | 描述 |
+|------|------|------|------|
+| POST | `/api/admin/cleanup-test-data` | admin | 清理自动化测试数据，仅在 `dev` / `test` profile 注册 |
+
+> 默认 profile 和 `prod` profile 下不会注册 `/api/admin/cleanup-test-data`，生产和预发环境不可调用该破坏性接口。
 
 #### 登录请求示例
 
@@ -611,7 +640,30 @@ POST /api/admin/login
 }
 ```
 
-#### 登录成功响应
+#### 登录成功响应 (BFF 模式)
+
+BFF 模式下，响应体不返回 `accessToken` / `refreshToken`，Token 会写入 HttpOnly Cookie。
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "studentNo": "S001",
+    "name": "王小明",
+    "gender": "男",
+    "majorId": 1,
+    "collegeId": 1,
+    "role": "student",
+    "tokenExpireTime": 1719200000000
+  },
+  "message": "登录成功"
+}
+```
+
+#### 登录成功响应 (后端直连)
+
+后端直连时，登录响应会返回 Token，客户端需自行通过 `Authorization: Bearer <access-token>` 调用受保护接口。
 
 ```json
 {
@@ -630,15 +682,34 @@ POST /api/admin/login
 }
 ```
 
-#### Token 刷新
+#### Token 刷新 (BFF 模式)
 
 ```bash
 POST /api/auth/refresh
-Authorization: Bearer <current-token>
+Cookie: bff_refresh_token=<refresh-token>
 ```
+
+Authorization Header 和旧版 `bff_token` 不会触发刷新。刷新失败或 Token 过期时，BFF 会清理 `bff_access_token`、`bff_refresh_token` 和旧版 `bff_token`。
 
 ```json
 // 响应
+{
+  "success": true,
+  "message": "Token refreshed",
+  "expiresIn": 1800
+}
+```
+
+#### Token 刷新 (后端直连)
+
+```json
+POST /api/auth/refresh
+{
+  "refreshToken": "<refresh-token>"
+}
+```
+
+```json
 {
   "success": true,
   "message": "Token刷新成功",
@@ -655,6 +726,19 @@ Authorization: Bearer <current-token>
 | POST | `/api/student/save` | admin | 新增学生 |
 | PUT | `/api/student/update` | admin | 更新学生 |
 | DELETE | `/api/student/{id}` | admin | 删除学生 |
+| POST | `/api/student/reset-password/{id}` | admin | 重置学生密码 |
+
+#### 重置学生密码响应
+
+```json
+{
+  "success": true,
+  "message": "密码重置成功",
+  "data": {
+    "temporaryPassword": "A8x#k2Pq"
+  }
+}
+```
 
 ### 教师接口
 
@@ -664,6 +748,19 @@ Authorization: Bearer <current-token>
 | POST | `/api/teacher/save` | admin | 新增教师 |
 | PUT | `/api/teacher/update` | admin | 更新教师 |
 | DELETE | `/api/teacher/{id}` | admin | 删除教师 |
+| POST | `/api/teacher/reset-password/{id}` | admin | 重置教师密码 |
+
+#### 重置教师密码响应
+
+```json
+{
+  "success": true,
+  "message": "密码重置成功",
+  "data": {
+    "temporaryPassword": "A8x#k2Pq"
+  }
+}
+```
 
 ### 课程接口
 
@@ -775,10 +872,10 @@ PUT /api/attendance/update-status
 
 | 项目 | 测试框架 | 测试文件数 | 覆盖范围 |
 |------|---------|-----------|---------|
-| 后端 | JUnit 5 + Mockito | 25 | 签到、考勤、密码、JWT、安全、数据库约束、服务层 |
-| BFF | Vitest | 9 | 认证、JWT验证、代理、错误处理、配置 |
-| 前端 | Vitest | 9 | 密码校验器、Token管理、请求、课表解析、离线签到 |
-| E2E | Playwright | 14 | 学院/专业 CRUD、级联下拉、表单提交、业务规则 |
+| 后端 | JUnit 5 + Mockito | 28 | 签到、考勤、密码、JWT、安全、数据库约束、服务层 |
+| BFF | Vitest | 12 | 认证、JWT验证、代理、日志脱敏、错误处理、配置 |
+| 前端 | Vitest | 10 | 密码校验器、Token管理、请求、课表解析、离线签到 |
+| E2E | Playwright | 12 | 学院/专业 CRUD、级联下拉、表单提交、业务规则 |
 
 ### 后端测试用例明细
 
@@ -799,7 +896,7 @@ PUT /api/attendance/update-status
 | `LoginAttemptServiceTest` | 登录尝试限制 |
 | `AttendanceLoggingTest` | 考勤日志输出 |
 | `PasswordMigrationTest` | 密码自动迁移 |
-| **总计** | **25 个测试类** |
+| **总计** | **28 个测试类** |
 
 ### 运行测试
 
@@ -824,6 +921,12 @@ cd frontend && npx playwright test
 npx playwright test --headed                # 有头模式
 npx playwright test tests/e2e/college/      # 按分类运行
 npx playwright show-report playwright-report # 查看报告
+
+# 构建与依赖审计
+cd frontend && npm run build
+cd bff && npm audit --omit=dev --registry=https://registry.npmjs.org
+cd frontend && npm audit --omit=dev --registry=https://registry.npmjs.org
+mvn -q -DskipTests dependency:tree -f backend/pom.xml
 ```
 
 ### 测试报告

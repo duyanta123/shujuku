@@ -1,256 +1,152 @@
-/**
- * request.js 单元测试 — 核心 HTTP 请求工具测试（原本零覆盖）
- *
- * 风险行为覆盖：
- * - BFF 模式：请求拦截器调用 tokenManager.refreshTokenIfNeeded()
- * - 降级模式：Token 即将过期时触发并发刷新队列
- * - 响应拦截器：401/403/423/网络错误 等状态码处理
- * - 响应数据自动解包（response.data）
- */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// ============================================================================
-// 使用 vi.hoisted 确保 mock 在模块加载前可用
-// ============================================================================
-
 const {
-  mockClearToken,
-  mockGetToken,
-  mockRefreshTokenIfNeeded,
-  mockIsTokenAboutToExpire,
-  mockSetToken,
-  mockRouterPush,
+  axiosPost,
+  axiosInstance,
   requestInterceptorFn,
   responseSuccessFn,
   responseErrorFn,
+  routerPush,
+  currentRoute,
 } = vi.hoisted(() => {
   const reqFn = { current: null }
   const resSuccessFn = { current: null }
   const resErrorFn = { current: null }
-
+  const instance = vi.fn().mockResolvedValue({ data: { success: true } })
+  instance.interceptors = {
+    request: { use: vi.fn((fn) => { reqFn.current = fn }) },
+    response: { use: vi.fn((success, error) => { resSuccessFn.current = success; resErrorFn.current = error }) },
+  }
   return {
-    mockClearToken: vi.fn(),
-    mockGetToken: vi.fn(),
-    mockRefreshTokenIfNeeded: vi.fn(),
-    mockIsTokenAboutToExpire: vi.fn(),
-    mockSetToken: vi.fn(),
-    mockRouterPush: vi.fn(),
+    axiosPost: vi.fn(),
+    axiosInstance: instance,
     requestInterceptorFn: reqFn,
     responseSuccessFn: resSuccessFn,
     responseErrorFn: resErrorFn,
+    routerPush: vi.fn(),
+    currentRoute: { value: { path: '/student/course' } },
   }
 })
 
-// Mock axios — 捕获拦截器注册以便直接测试
-vi.mock('axios', async (importOriginal) => {
-  const actualAxios = await importOriginal()
-  // 保存原始 axios 以使用其功能
-  const axiosInstance = actualAxios.default.create
-    ? actualAxios.default.create({})
-    : { interceptors: { request: { use: () => {} }, response: { use: () => {} } } }
-
-  return {
-    default: {
-      create: vi.fn(() => ({
-        // 捕获请求拦截器
-        interceptors: {
-          request: {
-            use: vi.fn((fn) => {
-              requestInterceptorFn.current = fn
-              return 0
-            }),
-          },
-          response: {
-            use: vi.fn((success, error) => {
-              responseSuccessFn.current = success
-              responseErrorFn.current = error
-              return 0
-            }),
-          },
-        },
-        get: vi.fn(),
-        post: vi.fn(),
-        defaults: { baseURL: '', timeout: 0, withCredentials: false },
-      })),
-    },
-  }
-})
-
-vi.mock('@/utils/tokenManager', () => ({
+vi.mock('axios', () => ({
   default: {
-    getToken: mockGetToken,
-    clearToken: mockClearToken,
-    refreshTokenIfNeeded: mockRefreshTokenIfNeeded,
-    isTokenAboutToExpire: mockIsTokenAboutToExpire,
-    setToken: mockSetToken,
+    create: vi.fn(() => axiosInstance),
+    post: axiosPost,
   },
 }))
 
 vi.mock('@/router', () => ({
-  default: { push: mockRouterPush },
+  default: {
+    push: routerPush,
+    currentRoute,
+  },
 }))
 
-// Mock element-plus — 简单替换
-vi.mock('element-plus', () => {
-  const fn = vi.fn()
-  return { ElMessage: { error: fn, warning: fn } }
-})
+vi.mock('element-plus', () => ({
+  ElMessage: { error: vi.fn(), warning: vi.fn() },
+}))
 
-// ============================================================================
-// 测试主体
-// ============================================================================
-
-describe('request.js — HTTP 请求拦截器与错误处理', () => {
-
-  beforeEach(() => {
+describe('request.js cookie-only client', () => {
+  beforeEach(async () => {
     vi.clearAllMocks()
-    vi.stubEnv('VITE_BFF_ENABLED', 'true')
+    localStorage.clear()
+    currentRoute.value.path = '/student/course'
+    axiosPost.mockResolvedValue({ data: { success: true } })
+    axiosInstance.mockResolvedValue({ data: { success: true } })
+    vi.resetModules()
+    await import('@/utils/request.js')
   })
 
-  describe('模块加载', () => {
-    it('应导出 axios 实例', async () => {
-      const request = await import('@/utils/request.js')
-      expect(request.default).toBeDefined()
-      expect(typeof request.default.get).toBe('function')
-      expect(typeof request.default.post).toBe('function')
-    })
+  it('sets withCredentials and strips Authorization headers', async () => {
+    const config = {
+      url: '/course/list',
+      headers: {
+        Authorization: 'Bearer client-token',
+        authorization: 'Bearer client-token',
+      },
+    }
+
+    const result = await requestInterceptorFn.current(config)
+    expect(result.withCredentials).toBe(true)
+    expect(result.headers.Authorization).toBeUndefined()
+    expect(result.headers.authorization).toBeUndefined()
   })
 
-  describe('响应拦截器 — 错误处理', () => {
-    it('401 错误应清除 Token 并跳转到登录页', async () => {
-      await import('@/utils/request.js')
-      const handler = responseErrorFn.current
-      const error = { response: { status: 401, data: {} } }
-
-      try { await handler(error) } catch (_) { /* reject expected */ }
-
-      expect(mockClearToken).toHaveBeenCalled()
-      expect(mockRouterPush).toHaveBeenCalledWith('/login')
-    })
-
-    it('403 错误应显示权限错误提示', async () => {
-      await import('@/utils/request.js')
-      const handler = responseErrorFn.current
-      const error = { response: { status: 403, data: {} } }
-
-      try { await handler(error) } catch (_) {}
-    })
-
-    it('423 错误（账号锁定）应显示锁定消息', async () => {
-      await import('@/utils/request.js')
-      const handler = responseErrorFn.current
-      const error = {
-        response: { status: 423, data: { message: '账号已被锁定，请15分钟后再试' } },
-      }
-
-      try { await handler(error) } catch (_) {}
-    })
-
-    it('423 错误无自定义消息时应使用默认消息', async () => {
-      await import('@/utils/request.js')
-      const handler = responseErrorFn.current
-      const error = { response: { status: 423, data: {} } }
-
-      try { await handler(error) } catch (_) {}
-    })
-
-    it('网络错误（无 response）应显示网络连接失败', async () => {
-      await import('@/utils/request.js')
-      const handler = responseErrorFn.current
-      const error = { message: 'Network Error' }
-
-      try { await handler(error) } catch (_) {}
-    })
-
-    it('其他 HTTP 错误应显示后端消息', async () => {
-      await import('@/utils/request.js')
-      const handler = responseErrorFn.current
-      const error = { response: { status: 500, data: { message: '服务器内部错误' } } }
-
-      try { await handler(error) } catch (_) {}
-    })
-
-    it('其他 HTTP 错误无消息时应显示默认消息', async () => {
-      await import('@/utils/request.js')
-      const handler = responseErrorFn.current
-      const error = { response: { status: 500, data: {} } }
-
-      try { await handler(error) } catch (_) {}
-    })
-
-    it('错误应被 reject 以便调用方捕获', async () => {
-      await import('@/utils/request.js')
-      const handler = responseErrorFn.current
-      const error = { response: { status: 500, data: { message: 'test' } } }
-
-      await expect(handler(error)).rejects.toBe(error)
-    })
+  it('unwraps successful responses', async () => {
+    const result = responseSuccessFn.current({ data: { success: true, data: [1] } })
+    expect(result).toEqual({ success: true, data: [1] })
   })
 
-  describe('响应拦截器 — 成功响应', () => {
-    it('成功响应应自动解包返回 response.data', async () => {
-      await import('@/utils/request.js')
-      const handler = responseSuccessFn.current
-      const response = { data: { success: true, message: 'ok' }, status: 200 }
+  it('refreshes once and retries protected requests after a 401', async () => {
+    const error = {
+      config: { url: '/course/list', headers: {} },
+      response: { status: 401, data: {} },
+    }
 
-      const result = await handler(response)
-      expect(result).toEqual({ success: true, message: 'ok' })
-    })
+    await responseErrorFn.current(error)
+
+    expect(axiosPost).toHaveBeenCalledWith('/api/auth/refresh', {}, { withCredentials: true })
+    expect(axiosInstance).toHaveBeenCalledWith(expect.objectContaining({
+      url: '/course/list',
+      _retry: true,
+    }))
   })
 
-  describe('请求拦截器 — BFF 模式', () => {
-    it('BFF 模式下应调用 tokenManager.refreshTokenIfNeeded()', async () => {
-      mockRefreshTokenIfNeeded.mockResolvedValue(null)
-
-      await import('@/utils/request.js')
-      const handler = requestInterceptorFn.current
-      const config = { method: 'get', url: '/test', headers: {} }
-
-      await handler(config)
-      expect(mockRefreshTokenIfNeeded).toHaveBeenCalled()
+  it('shares a single refresh request for concurrent 401 responses', async () => {
+    let resolveRefresh
+    axiosPost.mockReturnValue(new Promise(resolve => { resolveRefresh = resolve }))
+    const first = responseErrorFn.current({
+      config: { url: '/course/list', headers: {} },
+      response: { status: 401, data: {} },
+    })
+    const second = responseErrorFn.current({
+      config: { url: '/user/profile', headers: {} },
+      response: { status: 401, data: {} },
     })
 
-    it('BFF 模式下不应在请求头中添加 Authorization', async () => {
-      mockRefreshTokenIfNeeded.mockResolvedValue(null)
-
-      await import('@/utils/request.js')
-      const handler = requestInterceptorFn.current
-      const config = { method: 'get', url: '/test', headers: {} }
-
-      const result = await handler(config)
-      expect(result.headers?.Authorization).toBeUndefined()
-    })
+    expect(axiosPost).toHaveBeenCalledTimes(1)
+    resolveRefresh({ data: { success: true } })
+    await Promise.all([first, second])
+    expect(axiosInstance).toHaveBeenCalledTimes(2)
   })
 
-  describe('请求拦截器 — 降级模式', () => {
-    beforeEach(() => {
-      vi.stubEnv('VITE_BFF_ENABLED', 'false')
-    })
+  it('does not refresh login failures', async () => {
+    const error = {
+      config: { url: '/student/login', headers: {} },
+      response: { status: 401, data: {} },
+    }
 
-    it('降级模式下 Token 未过期时应在请求头添加 Authorization', async () => {
-      mockGetToken.mockReturnValue('test-token-123')
-      mockIsTokenAboutToExpire.mockReturnValue(false)
+    await expect(responseErrorFn.current(error)).rejects.toBe(error)
+    expect(axiosPost).not.toHaveBeenCalled()
+  })
 
-      vi.resetModules()
-      await import('@/utils/request.js')
-      const handler = requestInterceptorFn.current
-      const config = { method: 'get', url: '/test', headers: {} }
+  it('can skip refresh and messages for silent auth probes', async () => {
+    const error = {
+      config: {
+        url: '/user/profile',
+        headers: {},
+        skipAuthRefresh: true,
+        skipAuthRedirect: true,
+        skipErrorMessage: true,
+      },
+      response: { status: 401, data: {} },
+    }
 
-      const result = await handler(config)
-      expect(result.headers.Authorization).toBe('Bearer test-token-123')
-    })
+    await expect(responseErrorFn.current(error)).rejects.toBe(error)
+    expect(axiosPost).not.toHaveBeenCalled()
+    expect(routerPush).not.toHaveBeenCalled()
+  })
 
-    it('降级模式无 Token 时不应添加 Authorization', async () => {
-      mockGetToken.mockReturnValue(null)
-      mockIsTokenAboutToExpire.mockReturnValue(false)
+  it('clears UI cache and redirects when refresh fails', async () => {
+    localStorage.setItem('user', '{"name":"cached"}')
+    axiosPost.mockRejectedValue(new Error('refresh failed'))
+    const error = {
+      config: { url: '/course/list', headers: {} },
+      response: { status: 401, data: {} },
+    }
 
-      vi.resetModules()
-      await import('@/utils/request.js')
-      const handler = requestInterceptorFn.current
-      const config = { method: 'get', url: '/test', headers: {} }
-
-      const result = await handler(config)
-      expect(result.headers.Authorization).toBeUndefined()
-    })
+    await expect(responseErrorFn.current(error)).rejects.toThrow('refresh failed')
+    expect(localStorage.getItem('user')).toBeNull()
+    expect(routerPush).toHaveBeenCalledWith('/login')
   })
 })

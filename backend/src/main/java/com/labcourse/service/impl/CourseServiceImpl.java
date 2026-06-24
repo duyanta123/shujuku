@@ -53,6 +53,29 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
+    public List<Map<String, Object>> getCourseListByTeacherId(Long teacherId) {
+        String sql = """
+            SELECT
+                c.id,
+                c.course_name,
+                t.name AS teacher_name,
+                l.lab_name,
+                l.location,
+                c.course_time,
+                c.max_count,
+                COUNT(s.id) AS selected_count
+            FROM course c
+            LEFT JOIN teacher t ON c.teacher_id = t.id
+            LEFT JOIN lab l ON c.lab_id = l.id
+            LEFT JOIN selection s ON c.id = s.course_id
+            WHERE c.teacher_id = ?
+            GROUP BY c.id, c.course_name, t.name, l.lab_name, l.location, c.course_time, c.max_count
+            ORDER BY c.id
+            """;
+        return jdbcTemplate.queryForList(sql, teacherId);
+    }
+
+    @Override
     public List<Course> list(Long collegeId) {
         if (collegeId == null) {
             return courseRepository.findAll();
@@ -62,6 +85,7 @@ public class CourseServiceImpl implements CourseService {
 
     @Override
     public boolean save(Course course) {
+        validateCourse(course);
         courseRepository.save(course);
         return true;
     }
@@ -71,6 +95,12 @@ public class CourseServiceImpl implements CourseService {
         Optional<Course> existingOpt = courseRepository.findById(course.getId());
         if (existingOpt.isPresent()) {
             Course existing = existingOpt.get();
+            if (course.getMaxCount() != null) {
+                validateMaxCount(course.getMaxCount());
+            }
+            if (course.getCourseTime() != null) {
+                validateCourseTime(course.getCourseTime());
+            }
             if (course.getCourseName() != null) { existing.setCourseName(course.getCourseName()); }
             if (course.getTeacherId() != null) { existing.setTeacherId(course.getTeacherId()); }
             if (course.getLabId() != null) { existing.setLabId(course.getLabId()); }
@@ -88,6 +118,45 @@ public class CourseServiceImpl implements CourseService {
             }
             courseRepository.save(existing);
             return true;
+        }
+        return false;
+    }
+
+    private void validateCourse(Course course) {
+        validateMaxCount(course.getMaxCount());
+        validateCourseTime(course.getCourseTime());
+    }
+
+    private void validateMaxCount(Integer maxCount) {
+        if (maxCount == null || maxCount < 1 || maxCount > 100) {
+            throw new IllegalArgumentException("课程容量范围为1-100");
+        }
+    }
+
+    private void validateCourseTime(String courseTime) {
+        if (!hasValidCourseTime(courseTime)) {
+            throw new IllegalArgumentException("课程时间格式无效");
+        }
+    }
+
+    private boolean hasValidCourseTime(String courseTime) {
+        if (courseTime == null || courseTime.isBlank()) {
+            return false;
+        }
+        String[] parts = courseTime.split("[,，]");
+        java.util.regex.Pattern dayPattern = java.util.regex.Pattern.compile("(周[一二三四五六日]|星期[一二三四五六日])");
+        java.util.regex.Pattern periodPattern = java.util.regex.Pattern.compile("(\\d+)-(\\d+)节");
+        for (String part : parts) {
+            java.util.regex.Matcher dayMatcher = dayPattern.matcher(part);
+            java.util.regex.Matcher periodMatcher = periodPattern.matcher(part);
+            if (!dayMatcher.find() || !periodMatcher.find()) {
+                continue;
+            }
+            int start = Integer.parseInt(periodMatcher.group(1));
+            int end = Integer.parseInt(periodMatcher.group(2));
+            if (start >= 1 && end <= 10 && start <= end) {
+                return true;
+            }
         }
         return false;
     }

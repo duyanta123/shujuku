@@ -1,27 +1,27 @@
-import jwt from 'jsonwebtoken'
 import { config } from '../config.js'
 import { backendClient } from '../services/backendClient.js'
-import { jwtVerify } from '../middleware/jwtVerify.js'
-import { createLogger, maskSensitive } from '../utils/logger.js'
+import { createLogger } from '../utils/logger.js'
 
 const log = createLogger('AUTH')
 
+function getBearerToken(request) {
+  const authHeader = request.headers.authorization
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.slice(7)
+  }
+  return null
+}
+
 export async function setupAuthRoutes(app) {
-  /**
-   * 登录处理工厂函数
-   * 代理登录请求到后端，成功后签发双Token HttpOnly Cookie
-   * Security fix (HIGH-001): Access Token (30min) + Refresh Token (7d) 分开存储
-   * @param {string} targetPath - 后端目标路径
-   * @param {string} [usernameField='username'] - 请求体中用户名字段名
-   * @param {string} [roleName='unknown'] - 角色标识
-   */
   const createLoginHandler = (targetPath, usernameField = 'username', roleName = 'unknown') => {
     return async (request, reply) => {
-      const body = request.body || {}
+      const body = request.body && typeof request.body === 'object' && !Array.isArray(request.body)
+        ? request.body
+        : {}
       const username = body[usernameField]
       const { password } = body
 
-      log.info('登录请求', {
+      log.info('Login request', {
         requestId: request.id,
         path: targetPath,
         usernameField,
@@ -30,7 +30,7 @@ export async function setupAuthRoutes(app) {
       })
 
       if (!username || !password) {
-        log.warn('登录请求：缺少参数', {
+        log.warn('Login rejected: missing credentials', {
           requestId: request.id,
           path: targetPath,
           usernameField,
@@ -42,36 +42,31 @@ export async function setupAuthRoutes(app) {
       }
 
       try {
-        const response = await backendClient.post(targetPath, request.body)
+        const response = await backendClient.post(targetPath, body)
 
-        // 后端返回格式 { success, code, msg, data }
         if (response.success || response.data) {
           const userData = response.data || {}
+          const {
+            accessToken: _ignoredAccessToken,
+            refreshToken: _ignoredRefreshToken,
+            password: _ignoredPassword,
+            ...safeUserData
+          } = userData
           const userId = userData.id || userData.studentId || userData.teacherId || username || 'unknown'
           const displayName = userData.name || username || 'unknown'
+          const accessToken = response.accessToken || userData.accessToken
+          const refreshToken = response.refreshToken || userData.refreshToken
 
-          // BFF 生成自己的双Token
-          const accessTokenPayload = {
-            userId,
-            username: username || userData.username || userData.studentNo || userData.teacherNo || 'unknown',
-            role: roleName,
-            type: 'access',
+          if (!accessToken || !refreshToken) {
+            log.error('Login failed: backend did not return tokens', {
+              requestId: request.id,
+              path: targetPath,
+              hasAccessToken: !!accessToken,
+              hasRefreshToken: !!refreshToken,
+            })
+            reply.code(502)
+            return { success: false, message: 'Invalid backend authentication response' }
           }
-          const refreshTokenPayload = {
-            userId,
-            username: username || userData.username || userData.studentNo || userData.teacherNo || 'unknown',
-            role: roleName,
-            type: 'refresh',
-          }
-
-          const accessToken = jwt.sign(accessTokenPayload, config.jwt.secret, {
-            algorithm: 'HS256',
-            expiresIn: config.jwt.accessTokenMaxAge / 1000,
-          })
-          const refreshToken = jwt.sign(refreshTokenPayload, config.jwt.secret, {
-            algorithm: 'HS256',
-            expiresIn: config.jwt.refreshTokenMaxAge / 1000,
-          })
 
           const isSecure = config.nodeEnv === 'production'
           reply.setCookie(config.jwt.accessTokenCookieName, accessToken, {
@@ -89,7 +84,7 @@ export async function setupAuthRoutes(app) {
             maxAge: config.jwt.refreshTokenMaxAge / 1000,
           })
 
-          log.info('登录成功（双Token模式）', {
+          log.info('Login succeeded', {
             requestId: request.id,
             path: targetPath,
             username: username || '(unknown)',
@@ -100,9 +95,9 @@ export async function setupAuthRoutes(app) {
 
           return {
             success: true,
-            message: response.message || response.msg || '登录成功',
+            message: response.message || response.msg || 'Login succeeded',
             data: {
-              ...userData,
+              ...safeUserData,
               userId,
               username: username || userData.username || userData.studentNo || userData.teacherNo || 'unknown',
               role: roleName,
@@ -111,105 +106,85 @@ export async function setupAuthRoutes(app) {
           }
         }
 
-        log.warn('登录失败', {
+        log.warn('Login failed', {
           requestId: request.id,
           path: targetPath,
           username: username || '(unknown)',
-          reason: response.message || '认证失败',
+          reason: response.message || 'Authentication failed',
           ip: request.ip,
         })
 
         reply.code(401)
         return response
       } catch (err) {
-        log.error('登录请求异常', {
+        log.error('Login request failed', {
           requestId: request.id,
           path: targetPath,
           error: err.message,
           ip: request.ip,
         })
-        reply.code(502)
+        reply.code(err.name === 'AbortError' ? 504 : 502)
         return { success: false, message: '后端服务不可达，请稍后重试' }
       }
     }
   }
 
-  // 注册三个登录路由
   app.post('/api/student/login', createLoginHandler('/api/student/login', 'studentNo', 'student'))
   app.post('/api/teacher/login', createLoginHandler('/api/teacher/login', 'teacherNo', 'teacher'))
   app.post('/api/admin/login', createLoginHandler('/api/admin/login', 'username', 'admin'))
 
-  /**
-   * POST /api/auth/refresh
-   * Token 刷新 — 读取 refreshToken Cookie，透传到后端进行轮转刷新
-   * Security fix (HIGH-001): 代理刷新到后端实现Token轮转
-   *
-   * Token 读取优先级:
-   *   1. bff_refresh_token Cookie (双Token模式)
-   *   2. bff_token Cookie (兼容旧版单Token)
-   *   3. Authorization Header (兼容旧版)
-   */
   app.post('/api/auth/refresh', async (request, reply) => {
     const jwt = await import('jsonwebtoken')
 
     const refreshToken = request.cookies?.[config.jwt.refreshTokenCookieName]
-      || request.cookies?.[config.jwt.cookieName]
-      || (() => {
-        const authHeader = request.headers.authorization
-        if (authHeader?.startsWith('Bearer ')) {
-          return authHeader.slice(7)
-        }
-        return null
-      })()
 
     if (!refreshToken) {
-      log.warn('Token刷新请求：缺少RefreshToken', { requestId: request.id })
+      log.warn('Refresh rejected: missing refresh token', { requestId: request.id })
       reply.code(401)
-      return { success: false, message: '未找到RefreshToken，请重新登录' }
+      return { success: false, message: 'RefreshToken is missing, please log in again' }
     }
 
-    // 本地预验证 JWT 格式和过期
     try {
       const decoded = jwt.verify(refreshToken, config.jwt.secret, {
         algorithms: ['HS256', 'HS384', 'HS512'],
       })
 
-      log.info('Token刷新请求（本地验证通过）', {
+      log.info('Refresh request locally verified', {
         requestId: request.id,
         userId: decoded.userId || decoded.sub,
         tokenExp: decoded.exp ? new Date(decoded.exp * 1000).toISOString() : 'unknown',
       })
     } catch (err) {
       if (err.name === 'TokenExpiredError') {
-        log.warn('Token刷新失败：Token已过期', {
+        log.warn('Refresh rejected: token expired', {
           requestId: request.id,
           expiredAt: err.expiredAt,
         })
+        reply.clearCookie(config.jwt.accessTokenCookieName, { path: '/' })
         reply.clearCookie(config.jwt.refreshTokenCookieName, { path: '/api/auth' })
         reply.clearCookie(config.jwt.cookieName, { path: '/' })
         reply.code(401)
-        return { success: false, message: 'Token已过期，请重新登录' }
+        return { success: false, message: 'Token 已过期，请重新登录' }
       }
 
-      log.warn('Token刷新失败：Token无效', {
+      log.warn('Refresh rejected: invalid token', {
         requestId: request.id,
         error: err.name,
         message: err.message,
       })
+      reply.clearCookie(config.jwt.accessTokenCookieName, { path: '/' })
+      reply.clearCookie(config.jwt.refreshTokenCookieName, { path: '/api/auth' })
+      reply.clearCookie(config.jwt.cookieName, { path: '/' })
       reply.code(401)
-      return { success: false, message: 'Token无效，请重新登录' }
+      return { success: false, message: 'Invalid token, please log in again' }
     }
 
-    log.info('Token刷新请求', { requestId: request.id })
-
     try {
-      // 透传到后端执行Token轮转刷新
       const response = await backendClient.post('/api/auth/refresh', { refreshToken })
 
       if (response.success && response.accessToken && response.refreshToken) {
         const isSecure = config.nodeEnv === 'production'
 
-        // 更新 Access Token Cookie
         reply.setCookie(config.jwt.accessTokenCookieName, response.accessToken, {
           httpOnly: true,
           secure: isSecure,
@@ -218,7 +193,6 @@ export async function setupAuthRoutes(app) {
           maxAge: config.jwt.accessTokenMaxAge / 1000,
         })
 
-        // 更新 Refresh Token Cookie（轮转）
         reply.setCookie(config.jwt.refreshTokenCookieName, response.refreshToken, {
           httpOnly: true,
           secure: isSecure,
@@ -227,52 +201,49 @@ export async function setupAuthRoutes(app) {
           maxAge: config.jwt.refreshTokenMaxAge / 1000,
         })
 
-        log.info('Token刷新成功（轮转）', { requestId: request.id })
+        log.info('Refresh succeeded', { requestId: request.id })
 
         return {
           success: true,
-          message: 'Token已刷新',
+          message: 'Token refreshed',
           expiresIn: Math.floor(config.jwt.accessTokenMaxAge / 1000),
         }
       }
 
-      log.warn('Token刷新失败：后端拒绝', {
+      log.warn('Refresh rejected by backend', {
         requestId: request.id,
-        reason: response.message || '未知',
+        reason: response.message || 'unknown',
       })
       reply.code(401)
-      return { success: false, message: response.message || 'Token刷新失败，请重新登录' }
+      return { success: false, message: response.message || 'Token refresh failed, please log in again' }
     } catch (err) {
-      log.error('Token刷新异常', {
+      log.error('Refresh request failed', {
         requestId: request.id,
         error: err.message,
       })
-      reply.code(502)
-      return { success: false, message: 'Token刷新服务不可用' }
+      reply.code(err.name === 'AbortError' ? 504 : 502)
+      return { success: false, message: 'Token refresh service unavailable' }
     }
   })
 
-  /**
-   * POST /api/auth/logout
-   * 清除双Token Cookie，调用后端登出
-   */
   app.post('/api/auth/logout', async (request, reply) => {
-    log.info('用户登出', { requestId: request.id })
+    log.info('Logout request', { requestId: request.id })
 
-    // 清除两个Cookie
+    const accessToken = request.cookies?.[config.jwt.accessTokenCookieName]
+      || request.cookies?.[config.jwt.cookieName]
+      || getBearerToken(request)
+
     reply.clearCookie(config.jwt.accessTokenCookieName, { path: '/' })
     reply.clearCookie(config.jwt.refreshTokenCookieName, { path: '/api/auth' })
-    reply.clearCookie(config.jwt.cookieName, { path: '/' }) // 兼容旧版
+    reply.clearCookie(config.jwt.cookieName, { path: '/' })
 
-    // 通知后端清除refreshToken
     try {
-      const authHeader = request.headers.authorization
-      await backendClient.post('/api/auth/logout', {}, authHeader ? { Authorization: authHeader } : {})
+      const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+      await backendClient.post('/api/auth/logout', {}, { headers })
     } catch (e) {
-      // 后端登出失败不影响前端清除Cookie
-      log.warn('后端登出通知失败', { requestId: request.id, error: e.message })
+      log.warn('Backend logout notification failed', { requestId: request.id, error: e.message })
     }
 
-    return { success: true, message: '已退出登录' }
+    return { success: true, message: 'Logged out' }
   })
 }

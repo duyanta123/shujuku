@@ -16,11 +16,10 @@ export function checkIn(data) {
   })
 }
 
-export function getAttendanceHistory(studentId) {
+export function getAttendanceHistory() {
   return request({
     url: '/attendance/history',
-    method: 'get',
-    params: { studentId }
+    method: 'get'
   })
 }
 

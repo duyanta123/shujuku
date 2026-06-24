@@ -98,6 +98,7 @@ import { ElMessage } from 'element-plus'
 import { studentLogin } from '../api/student'
 import { teacherLogin } from '../api/teacher'
 import { adminLogin } from '../api/admin'
+import userStore from '../stores/userStore'
 
 const router = useRouter()
 const loading = ref(false)
@@ -140,20 +141,10 @@ const handleLogin = async () => {
     }
 
     if (result.success) {
-      const BFF_ENABLED = import.meta.env.VITE_BFF_ENABLED !== 'false'
-      // Security fix (HIGH-003): BFF模式下不存储敏感身份信息到localStorage
-      // Token由HttpOnly Cookie管理，仅存储必要的 id 用于API调用
-      const userData = BFF_ENABLED
-        ? { _bffMode: true, token: 'bff-cookie', id: result.data?.id }
-        : {
-            ...result.data,
-            role: loginForm.role,
-            token: result.token,
-            tokenExpireTime: result.data?.tokenExpireTime || (Date.now() + 86400 * 1000),
-          }
-      localStorage.setItem('user', JSON.stringify(userData))
-      ElMessage.success(`欢迎，${result.data.name || result.data.username}`)
-      router.push(`/${loginForm.role}`)
+      localStorage.removeItem('user')
+      const profile = await userStore.fetchProfile()
+      ElMessage.success(`欢迎，${profile.name || profile.account}`)
+      router.push(`/${profile.role}`)
     } else {
       ElMessage.error(result.message || '登录失败')
     }

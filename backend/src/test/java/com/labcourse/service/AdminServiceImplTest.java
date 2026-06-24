@@ -189,9 +189,9 @@ class AdminServiceImplTest {
     void save_ShouldEncodePassword() {
         Admin admin = new Admin();
         admin.setUsername("newadmin");
-        admin.setPassword("plain_password");
+        admin.setPassword("Plain123!");
 
-        when(passwordEncoder.encode("plain_password")).thenReturn("hashed_password");
+        when(passwordEncoder.encode("Plain123!")).thenReturn("hashed_password");
 
         boolean result = service.save(admin);
 
@@ -215,10 +215,10 @@ class AdminServiceImplTest {
         Admin update = new Admin();
         update.setId(1L);
         update.setUsername("admin_new");
-        update.setPassword("new_plain");
+        update.setPassword("NewPass1!");
 
         when(adminRepository.findById(1L)).thenReturn(Optional.of(existing));
-        when(passwordEncoder.encode("new_plain")).thenReturn("new_hashed");
+        when(passwordEncoder.encode("NewPass1!")).thenReturn("new_hashed");
 
         boolean result = service.updateById(update);
 

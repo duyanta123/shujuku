@@ -167,8 +167,8 @@ describe('maskSensitive — 边界情况', () => {
     })
     // maskSensitive 仅做浅拷贝，不会递归进入嵌套对象
     // 一级 key 名为 'password'/'token' 才会被遮蔽，嵌套内部不会
-    expect(result.user.password).toBe('nested-pwd')
-    expect(result.data.token).toBe('nested-token')
+    expect(result.user.password).toBe('***')
+    expect(result.data.token).toBe('***')
   })
 
   it('敏感字段值为空字符串时不应遮蔽', () => {

@@ -12,7 +12,7 @@
  * 8. 安全性验证 - HttpOnly Cookie 设置
  */
 
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
 import jwt from 'jsonwebtoken'
 import { config } from '../src/config.js'
 
@@ -21,6 +21,40 @@ let app
 let validToken
 let expiredToken
 let invalidToken
+const originalFetch = globalThis.fetch
+
+function createJsonResponse(payload, status = 200) {
+  return {
+    status,
+    headers: {
+      get: (key) => key.toLowerCase() === 'content-type' ? 'application/json' : null,
+    },
+    json: async () => payload,
+  }
+}
+
+function mockBackendRefreshSuccess() {
+  globalThis.fetch = vi.fn((url, options) => {
+    if (String(url).endsWith('/api/auth/refresh')) {
+      const accessToken = jwt.sign(
+        { userId: 1, username: 'testuser', role: 'student' },
+        config.jwt.secret,
+        { algorithm: 'HS256', expiresIn: '30m' }
+      )
+      const refreshToken = jwt.sign(
+        { userId: 1, username: 'testuser', role: 'student' },
+        config.jwt.secret,
+        { algorithm: 'HS256', expiresIn: '7d' }
+      )
+      return Promise.resolve(createJsonResponse({
+        success: true,
+        accessToken,
+        refreshToken,
+      }))
+    }
+    return originalFetch(url, options)
+  })
+}
 
 beforeAll(async () => {
   // 生成测试用 Token
@@ -48,6 +82,15 @@ afterAll(async () => {
   if (app) {
     await app.close()
   }
+})
+
+beforeEach(() => {
+  mockBackendRefreshSuccess()
+})
+
+afterEach(() => {
+  globalThis.fetch = originalFetch
+  vi.restoreAllMocks()
 })
 
 // ============================================================================
@@ -152,7 +195,7 @@ describe('POST /api/auth/refresh - 正常流程', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
-      cookies: { [config.jwt.cookieName]: validToken },
+      cookies: { [config.jwt.refreshTokenCookieName]: validToken },
     })
 
     // 后端不在运行时返回502, 运行时返回200
@@ -166,7 +209,7 @@ describe('POST /api/auth/refresh - 正常流程', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
-      cookies: { [config.jwt.cookieName]: validToken },
+      cookies: { [config.jwt.refreshTokenCookieName]: validToken },
     })
 
     // 后端不在运行时返回502, 不应返回401（表示Token未被读取）
@@ -193,7 +236,7 @@ describe('POST /api/auth/refresh - 错误场景', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
-      cookies: { [config.jwt.cookieName]: invalidToken },
+      cookies: { [config.jwt.refreshTokenCookieName]: invalidToken },
     })
 
     expect(response.statusCode).toBe(401)
@@ -205,7 +248,7 @@ describe('POST /api/auth/refresh - 错误场景', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
-      cookies: { [config.jwt.cookieName]: expiredToken },
+      cookies: { [config.jwt.refreshTokenCookieName]: expiredToken },
     })
 
     expect(response.statusCode).toBe(401)
@@ -218,7 +261,7 @@ describe('POST /api/auth/refresh - 错误场景', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
-      cookies: { [config.jwt.cookieName]: expiredToken },
+      cookies: { [config.jwt.refreshTokenCookieName]: expiredToken },
     })
 
     const setCookieHeader = response.headers['set-cookie']
@@ -227,11 +270,11 @@ describe('POST /api/auth/refresh - 错误场景', () => {
         ? setCookieHeader.join('; ')
         : setCookieHeader
       // 清除 Cookie 时 maxAge 应为 0 或已过期
-      expect(cookieStr).toContain(config.jwt.cookieName)
+      expect(cookieStr).toContain(config.jwt.refreshTokenCookieName)
     }
   })
 
-  it('Authorization Header 中的有效 Token 也应该能刷新', async () => {
+  it('Authorization Header 中的有效 Token 不应触发刷新', async () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
@@ -240,8 +283,7 @@ describe('POST /api/auth/refresh - 错误场景', () => {
       },
     })
 
-    // 后端不在运行时返回502, 运行时返回200
-    expect([200, 502]).toContain(response.statusCode)
+    expect(response.statusCode).toBe(401)
     const body = response.json()
     expect(body).toBeTruthy()
   })
@@ -292,7 +334,7 @@ describe('POST /api/auth/refresh - 边界情况', () => {
     const refreshResponse = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
-      cookies: { [config.jwt.cookieName]: validToken },
+      cookies: { [config.jwt.refreshTokenCookieName]: validToken },
     })
 
     // 后端不在运行时返回502, 运行时返回200
@@ -303,10 +345,10 @@ describe('POST /api/auth/refresh - 边界情况', () => {
     const setCookieHeader = refreshResponse.headers['set-cookie']
     if (setCookieHeader && refreshResponse.statusCode === 200) {
       const cookieStr = Array.isArray(setCookieHeader)
-        ? setCookieHeader[0]
+        ? setCookieHeader.join('; ')
         : setCookieHeader
 
-      const match = cookieStr.match(new RegExp(`${config.jwt.cookieName}=([^;]+)`))
+      const match = cookieStr.match(new RegExp(`${config.jwt.refreshTokenCookieName}=([^;]+)`))
       const newToken = match ? match[1] : null
 
       expect(newToken).toBeTruthy()
@@ -316,7 +358,7 @@ describe('POST /api/auth/refresh - 边界情况', () => {
         const secondRefresh = await app.inject({
           method: 'POST',
           url: '/api/auth/refresh',
-          cookies: { [config.jwt.cookieName]: newToken },
+          cookies: { [config.jwt.refreshTokenCookieName]: newToken },
         })
 
         expect([200, 502]).toContain(secondRefresh.statusCode)
@@ -575,7 +617,7 @@ describe('POST /api/auth/refresh - 并发与安全性', () => {
       app.inject({
         method: 'POST',
         url: '/api/auth/refresh',
-        cookies: { [config.jwt.cookieName]: validToken },
+        cookies: { [config.jwt.refreshTokenCookieName]: validToken },
       })
     )
 
@@ -598,7 +640,7 @@ describe('POST /api/auth/refresh - 并发与安全性', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
-      cookies: { [config.jwt.cookieName]: 'noneToken' },
+      cookies: { [config.jwt.refreshTokenCookieName]: 'noneToken' },
     })
 
     expect(response.statusCode).toBe(401)
@@ -614,7 +656,7 @@ describe('POST /api/auth/refresh - 并发与安全性', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
-      cookies: { [config.jwt.cookieName]: extraToken },
+      cookies: { [config.jwt.refreshTokenCookieName]: extraToken },
     })
 
     expect([200, 502]).toContain(response.statusCode)
@@ -632,7 +674,7 @@ describe('POST /api/auth/refresh - 并发与安全性', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
-      cookies: { [config.jwt.cookieName]: noRoleToken },
+      cookies: { [config.jwt.refreshTokenCookieName]: noRoleToken },
     })
 
     expect([200, 502]).toContain(response.statusCode)
@@ -650,7 +692,7 @@ describe('POST /api/auth/refresh - 并发与安全性', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
-      cookies: { [config.jwt.cookieName]: stringIdToken },
+      cookies: { [config.jwt.refreshTokenCookieName]: stringIdToken },
     })
 
     expect([200, 502]).toContain(response.statusCode)
@@ -670,7 +712,7 @@ describe('POST /api/auth/refresh - Token 轮换验证', () => {
       const response = await app.inject({
         method: 'POST',
         url: '/api/auth/refresh',
-        cookies: { [config.jwt.cookieName]: currentToken },
+        cookies: { [config.jwt.refreshTokenCookieName]: currentToken },
       })
 
       // 后端不在运行时返回502, 运行时返回200
@@ -684,7 +726,7 @@ describe('POST /api/auth/refresh - Token 轮换验证', () => {
         const cookieStr = Array.isArray(setCookieHeader)
           ? setCookieHeader[0]
           : setCookieHeader
-        const match = cookieStr.match(new RegExp(`${config.jwt.cookieName}=([^;]+)`))
+        const match = cookieStr.match(new RegExp(`${config.jwt.refreshTokenCookieName}=([^;]+)`))
         if (match) {
           currentToken = match[1]
         }
@@ -696,7 +738,7 @@ describe('POST /api/auth/refresh - Token 轮换验证', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
-      cookies: { [config.jwt.cookieName]: validToken },
+      cookies: { [config.jwt.refreshTokenCookieName]: validToken },
     })
 
     expect([200, 502]).toContain(response.statusCode)
@@ -704,9 +746,9 @@ describe('POST /api/auth/refresh - Token 轮换验证', () => {
     if (response.statusCode === 200) {
       const setCookieHeader = response.headers['set-cookie']
       const cookieStr = Array.isArray(setCookieHeader)
-        ? setCookieHeader[0]
+        ? setCookieHeader.join('; ')
         : setCookieHeader
-      const match = cookieStr.match(new RegExp(`${config.jwt.cookieName}=([^;]+)`))
+      const match = cookieStr.match(new RegExp(`${config.jwt.refreshTokenCookieName}=([^;]+)`))
       const newToken = match ? match[1] : null
 
       expect(newToken).toBeTruthy()
@@ -723,7 +765,7 @@ describe('POST /api/auth/refresh - Token 轮换验证', () => {
     const firstRefresh = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
-      cookies: { [config.jwt.cookieName]: validToken },
+      cookies: { [config.jwt.refreshTokenCookieName]: validToken },
     })
     expect([200, 502]).toContain(firstRefresh.statusCode)
 
@@ -731,7 +773,7 @@ describe('POST /api/auth/refresh - Token 轮换验证', () => {
     const secondRefresh = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
-      cookies: { [config.jwt.cookieName]: validToken },
+      cookies: { [config.jwt.refreshTokenCookieName]: validToken },
     })
     expect([200, 502]).toContain(secondRefresh.statusCode)
   })
@@ -844,7 +886,7 @@ describe('Cookie 安全性验证', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
-      cookies: { [config.jwt.cookieName]: expiredToken },
+      cookies: { [config.jwt.refreshTokenCookieName]: expiredToken },
     })
 
     const setCookieHeader = response.headers['set-cookie']
@@ -929,27 +971,23 @@ describe('POST /api/auth/refresh — bff_refresh_token Cookie 读取', () => {
     expect(setCookieHeader).toBeTruthy()
   })
 
-  it('无 bff_refresh_token 但有 bff_token 时应回退到 bff_token', async () => {
+  it('无 bff_refresh_token 但有 bff_token 时应返回 401', async () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
       cookies: { [config.jwt.cookieName]: validToken },
     })
 
-    // 回退到 bff_token，不应返回401
-    expect(response.statusCode).not.toBe(401)
-    expect([200, 502]).toContain(response.statusCode)
+    expect(response.statusCode).toBe(401)
   })
 
-  it('bff_refresh_token 和 bff_token 都缺失时应有 Authorization Header 回退', async () => {
+  it('bff_refresh_token 和 bff_token 都缺失时 Authorization Header 应返回 401', async () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/auth/refresh',
       headers: { Authorization: `Bearer ${validToken}` },
     })
 
-    // Authorization Header 回退生效
-    expect(response.statusCode).not.toBe(401)
-    expect([200, 502]).toContain(response.statusCode)
+    expect(response.statusCode).toBe(401)
   })
 })

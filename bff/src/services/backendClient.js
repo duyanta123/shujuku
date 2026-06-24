@@ -1,5 +1,6 @@
 import { config } from '../config.js'
 import { createLogger, maskSensitive } from '../utils/logger.js'
+import { fetchWithTimeout } from '../utils/fetchWithTimeout.js'
 
 const log = createLogger('BACKEND')
 
@@ -27,7 +28,7 @@ class BackendClient {
       hasAuth: !!headers.authorization,
     })
 
-    const response = await fetch(url, fetchOptions)
+    const response = await fetchWithTimeout(url, fetchOptions)
     const duration = Date.now() - start
 
     // 透传非 JSON 响应（文件导出等）

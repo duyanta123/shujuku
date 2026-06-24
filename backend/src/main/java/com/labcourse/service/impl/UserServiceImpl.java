@@ -8,6 +8,7 @@ import com.labcourse.repository.StudentRepository;
 import com.labcourse.repository.TeacherRepository;
 import com.labcourse.service.UserService;
 import com.labcourse.util.JwtUtil;
+import com.labcourse.util.PasswordPolicy;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,8 +21,9 @@ import javax.imageio.ImageIO;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -97,16 +99,20 @@ public class UserServiceImpl implements UserService {
         // Resize to 200x200
         BufferedImage resizedImage = resizeImage(croppedImage, AVATAR_SIZE, AVATAR_SIZE);
 
-        // Save to disk
-        File dir = new File(avatarDir);
-        if (!dir.exists()) {
-            dir.mkdirs();
+        Path dir = Path.of(avatarDir).toAbsolutePath().normalize();
+        try {
+            Files.createDirectories(dir);
+        } catch (IOException e) {
+            throw new RuntimeException("创建头像目录失败");
         }
 
         String filename = java.util.UUID.randomUUID().toString() + ".png";
-        File destFile = new File(dir, filename);
+        Path destFile = dir.resolve(filename).normalize();
+        if (!destFile.startsWith(dir)) {
+            throw new RuntimeException("头像保存路径非法");
+        }
         try {
-            ImageIO.write(resizedImage, "png", destFile);
+            ImageIO.write(resizedImage, "png", destFile.toFile());
         } catch (IOException e) {
             throw new RuntimeException("保存头像文件失败");
         }
@@ -122,9 +128,7 @@ public class UserServiceImpl implements UserService {
             updateUserAvatar(userId, role, avatarUrl);
         } catch (Exception e) {
             // Rollback: delete the newly saved file if DB update fails
-            if (destFile.exists()) {
-                destFile.delete();
-            }
+            deleteIfExists(destFile);
             throw new RuntimeException("更新头像信息失败");
         }
 
@@ -178,6 +182,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public boolean changePassword(String oldPassword, String newPassword) {
+        PasswordPolicy.requireValid(newPassword);
         String token = extractToken();
         Long userId = jwtUtil.getUserIdFromToken(token);
         String role = jwtUtil.getRoleFromToken(token);
@@ -280,17 +285,22 @@ public class UserServiceImpl implements UserService {
         if (oldAvatarUrl != null && !oldAvatarUrl.isEmpty() && oldAvatarUrl.startsWith(AVATAR_URL_PREFIX)) {
             try {
                 String filename = oldAvatarUrl.substring(AVATAR_URL_PREFIX.length());
-                File oldFile = new File(avatarDir + filename);
-                if (oldFile.exists()) {
-                    boolean deleted = oldFile.delete();
-                    if (!deleted) {
-                        // Log but don't throw - old file cleanup is best-effort
-                        System.err.println("无法删除旧头像文件: " + oldFile.getAbsolutePath());
-                    }
+                Path dir = Path.of(avatarDir).toAbsolutePath().normalize();
+                Path oldFile = dir.resolve(filename).normalize();
+                if (oldFile.startsWith(dir) && Files.exists(oldFile)) {
+                    deleteIfExists(oldFile);
                 }
             } catch (Exception e) {
                 System.err.println("删除旧头像文件时出错: " + e.getMessage());
             }
+        }
+    }
+
+    private void deleteIfExists(Path path) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException e) {
+            System.err.println("无法删除头像文件: " + path.toAbsolutePath());
         }
     }
 }

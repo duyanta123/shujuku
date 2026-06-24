@@ -1,7 +1,8 @@
 import { config } from '../config.js'
 import { jwtVerify } from '../middleware/jwtVerify.js'
 import { proxyMapping } from './proxyMapping.js'
-import { createLogger } from '../utils/logger.js'
+import { createLogger, maskSensitive } from '../utils/logger.js'
+import { fetchWithTimeout } from '../utils/fetchWithTimeout.js'
 
 const log = createLogger('PROXY')
 
@@ -67,10 +68,16 @@ export async function transparentProxyPlugin(app) {
       const proxyStart = Date.now()
 
       // 构建请求体日志（脱敏 + 截断）
-      const bodyStr = body ? JSON.stringify(body) : null
+      const safeBody = body && !Buffer.isBuffer(body) ? maskSensitive(body) : null
+      let bodyStr = null
+      try {
+        bodyStr = safeBody ? JSON.stringify(safeBody) : null
+      } catch {
+        bodyStr = null
+      }
       const bodyPreview = bodyStr
         ? (bodyStr.length > 500 ? bodyStr.substring(0, 500) + '...(truncated)' : bodyStr)
-        : '(empty)'
+        : (body ? '[unserializable or binary body]' : '(empty)')
 
       log.info('代理转发开始', {
         requestId: request.id,
@@ -107,7 +114,7 @@ export async function transparentProxyPlugin(app) {
           fetchOptions.body = JSON.stringify(body)
         }
 
-        const response = await fetch(`${config.backendUrl}${url}`, fetchOptions)
+        const response = await fetchWithTimeout(`${config.backendUrl}${url}`, fetchOptions)
 
         const proxyDuration = Date.now() - proxyStart
 
@@ -156,7 +163,7 @@ export async function transparentProxyPlugin(app) {
 
         // 记录后端返回的非成功响应（含响应体摘要）
         if (!jsonResponse.success && response.status >= 400) {
-          const respPreview = JSON.stringify(jsonResponse).substring(0, 300)
+          const respPreview = JSON.stringify(maskSensitive(jsonResponse)).substring(0, 300)
           log.warn('代理转发：后端返回错误', {
             requestId: request.id,
             path,

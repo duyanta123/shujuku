@@ -34,20 +34,17 @@ public class AttendanceController {
      */
     @PostMapping("/check-in")
     public ResponseEntity<Map<String, Object>> checkIn(@RequestBody Map<String, Object> data) {
-        Object studentIdObj = data.get("studentId");
         Object courseIdObj = data.get("courseId");
 
-        if (studentIdObj == null || courseIdObj == null) {
+        if (courseIdObj == null) {
             Map<String, Object> result = new HashMap<>();
             result.put("success", false);
-            result.put("message", "studentId 和 courseId 不能为空");
+            result.put("message", "courseId 不能为空");
             return ResponseEntity.badRequest().body(result);
         }
 
-        Long studentId;
         Long courseId;
         try {
-            studentId = Long.valueOf(studentIdObj.toString());
             courseId = Long.valueOf(courseIdObj.toString());
         } catch (NumberFormatException e) {
             Map<String, Object> result = new HashMap<>();
@@ -56,17 +53,14 @@ public class AttendanceController {
             return ResponseEntity.badRequest().body(result);
         }
 
-        // Security fix: 从JWT Token中获取当前认证用户ID，学生只能为自己签到
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        Long currentUserId = Long.valueOf(authentication.getPrincipal().toString());
-        if (hasRole(authentication, "student")) {
-            if (!studentId.equals(currentUserId)) {
-                Map<String, Object> result = new HashMap<>();
-                result.put("success", false);
-                result.put("message", "无权为其他学生签到");
-                return ResponseEntity.status(403).body(result);
-            }
+        if (!hasRole(authentication, "student")) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", false);
+            result.put("message", "仅学生可签到");
+            return ResponseEntity.status(403).body(result);
         }
+        Long studentId = Long.valueOf(authentication.getPrincipal().toString());
 
         if (courseRepository.existsById(courseId)
                 && selectionRepository.findByStudentIdAndCourseId(studentId, courseId).isEmpty()) {
@@ -84,18 +78,16 @@ public class AttendanceController {
      * 获取学生考勤历史
      */
     @GetMapping("/history")
-    public ResponseEntity<Map<String, Object>> getHistory(@RequestParam Long studentId) {
-        // Security fix: 学生只能查看自己的考勤历史
+    public ResponseEntity<Map<String, Object>> getHistory(@RequestParam(required = false) Long studentId) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        Long currentUserId = Long.valueOf(authentication.getPrincipal().toString());
         Map<String, Object> result = new HashMap<>();
 
         if (hasRole(authentication, "student")) {
-            if (!studentId.equals(currentUserId)) {
-                result.put("success", false);
-                result.put("message", "无权查看其他学生的考勤记录");
-                return ResponseEntity.status(403).body(result);
-            }
+            studentId = Long.valueOf(authentication.getPrincipal().toString());
+        } else if (studentId == null) {
+            result.put("success", false);
+            result.put("message", "studentId is required");
+            return ResponseEntity.badRequest().body(result);
         }
 
         List<Map<String, Object>> records = attendanceService.getStudentHistory(studentId);
@@ -160,6 +152,12 @@ public class AttendanceController {
 
         // Security fix: teacherId从JWT Token中获取，不信任请求体
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (!hasRole(authentication, "teacher")) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", false);
+            result.put("message", "仅教师可修改考勤");
+            return ResponseEntity.status(403).body(result);
+        }
         Long teacherId = Long.valueOf(authentication.getPrincipal().toString());
 
         String reason = data.get("reason") != null ? data.get("reason").toString() : "";
@@ -225,7 +223,14 @@ public class AttendanceController {
      * 验证教师是否有权操作指定课程
      */
     private ResponseEntity<Map<String, Object>> validateTeacherCourseOwnership(Long courseId) {
-        Long teacherId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getPrincipal().toString());
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (!hasRole(authentication, "teacher")) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", false);
+            result.put("message", "仅教师可操作课程考勤");
+            return ResponseEntity.status(403).body(result);
+        }
+        Long teacherId = Long.valueOf(authentication.getPrincipal().toString());
         Course course = courseRepository.findById(courseId).orElse(null);
         if (course == null) {
             Map<String, Object> result = new HashMap<>();

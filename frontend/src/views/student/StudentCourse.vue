@@ -14,8 +14,8 @@
       <div v-for="course in courseList" :key="course.id" class="course-card">
         <div class="card-top">
           <div class="course-id">{{ course.course_name }}</div>
-          <el-tag :type="course.selected_count >= course.max_count ? 'danger' : 'success'" size="small" effect="plain">
-            {{ course.selected_count >= course.max_count ? '已满' : '可选' }}
+          <el-tag :type="capacityStatus(course).type" size="small" effect="plain">
+            {{ capacityStatus(course).label }}
           </el-tag>
         </div>
         <div class="card-body">
@@ -42,13 +42,13 @@
         </div>
         <div class="card-footer">
           <div class="capacity-bar">
-            <div class="bar-fill" :style="{ width: (course.selected_count / course.max_count * 100) + '%' }"></div>
+            <div class="bar-fill" :style="{ width: capacityPercent(course) + '%' }"></div>
           </div>
-          <span class="capacity-text">{{ course.selected_count }} / {{ course.max_count }}</span>
+          <span class="capacity-text">{{ capacityText(course) }}</span>
           <el-button
             type="primary"
             size="small"
-            :disabled="course.selected_count >= course.max_count"
+            :disabled="!canSelect(course)"
             @click="handleSelectCourse(course)"
           >
             选课
@@ -84,6 +84,29 @@ const loadCourses = async () => {
   } catch (error) {
     ElMessage.error('加载课程列表失败')
   }
+}
+
+const validCapacity = (course) => Number(course.max_count) > 0
+
+const capacityPercent = (course) => {
+  if (!validCapacity(course)) return 0
+  return Math.min(100, Math.max(0, Number(course.selected_count || 0) / Number(course.max_count) * 100))
+}
+
+const capacityText = (course) => {
+  if (!validCapacity(course)) return '容量异常'
+  return `${course.selected_count || 0} / ${course.max_count}`
+}
+
+const capacityStatus = (course) => {
+  if (!validCapacity(course)) return { type: 'danger', label: '异常' }
+  return Number(course.selected_count || 0) >= Number(course.max_count)
+    ? { type: 'danger', label: '已满' }
+    : { type: 'success', label: '可选' }
+}
+
+const canSelect = (course) => {
+  return validCapacity(course) && Number(course.selected_count || 0) < Number(course.max_count)
 }
 
 const handleSelectCourse = async (course) => {

@@ -1,7 +1,7 @@
 /**
  * @typedef {Object} NavItem    导航项
  * @property {string} to        路由路径（如 '/admin/student'）
- * @property {string} icon      内联 SVG 字符串，来自 icons.js
+ * @property {string} icon      固定图标 key
  * @property {string} label     导航显示文本
  */
 
@@ -18,7 +18,6 @@
 
 // 角色布局配置 — 统一管理导航项、品牌信息、头像占位符
 import { adminPlaceholder, teacherPlaceholder, studentPlaceholder } from '@/assets/avatarPlaceholder'
-import { adminIcons, teacherIcons, studentIcons } from '@/assets/icons'
 
 // 管理员端配置
 export const adminLayoutConfig = {
@@ -29,11 +28,11 @@ export const adminLayoutConfig = {
   accountFallback: 'admin',
   placeholder: adminPlaceholder,
   navItems: [
-    { to: '/admin/student', icon: adminIcons.student, label: '学生管理' },
-    { to: '/admin/teacher', icon: adminIcons.teacher, label: '教师管理' },
-    { to: '/admin/course', icon: adminIcons.course, label: '课程管理' },
-    { to: '/admin/lab', icon: adminIcons.lab, label: '实验室管理' },
-    { to: '/admin/college-major', icon: adminIcons.college, label: '学院专业管理' },
+    { to: '/admin/student', icon: 'student', label: '学生管理' },
+    { to: '/admin/teacher', icon: 'teacher', label: '教师管理' },
+    { to: '/admin/course', icon: 'course', label: '课程管理' },
+    { to: '/admin/lab', icon: 'lab', label: '实验室管理' },
+    { to: '/admin/college-major', icon: 'college', label: '学院专业管理' },
   ],
 }
 
@@ -46,9 +45,9 @@ export const teacherLayoutConfig = {
   accountFallback: 'T001',
   placeholder: teacherPlaceholder,
   navItems: [
-    { to: '/teacher/course', icon: teacherIcons.course, label: '我的课程' },
-    { to: '/teacher/score', icon: teacherIcons.score, label: '成绩录入' },
-    { to: '/teacher/attendance', icon: teacherIcons.attendance, label: '考勤录入' },
+    { to: '/teacher/course', icon: 'course', label: '我的课程' },
+    { to: '/teacher/score', icon: 'score', label: '成绩录入' },
+    { to: '/teacher/attendance', icon: 'attendance', label: '考勤录入' },
   ],
 }
 
@@ -61,10 +60,10 @@ export const studentLayoutConfig = {
   accountFallback: '',
   placeholder: studentPlaceholder,
   navItems: [
-    { to: '/student/course', icon: studentIcons.course, label: '课程列表' },
-    { to: '/student/my-course', icon: studentIcons.myCourse, label: '我的课程' },
-    { to: '/student/schedule', icon: studentIcons.schedule, label: '我的课表' },
-    { to: '/student/attendance', icon: studentIcons.attendance, label: '课堂签到' },
-    { to: '/student/attendance-history', icon: studentIcons.history, label: '考勤记录' },
+    { to: '/student/course', icon: 'course', label: '课程列表' },
+    { to: '/student/my-course', icon: 'myCourse', label: '我的课程' },
+    { to: '/student/schedule', icon: 'schedule', label: '我的课表' },
+    { to: '/student/attendance', icon: 'attendance', label: '课堂签到' },
+    { to: '/student/attendance-history', icon: 'history', label: '考勤记录' },
   ],
 }

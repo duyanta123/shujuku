@@ -28,6 +28,8 @@ public class LabServiceImpl implements LabService {
 
     @Override
     public boolean save(Lab lab) {
+        validateLab(lab);
+        validateCollege(lab.getCollegeId());
         labRepository.save(lab);
         return true;
     }
@@ -37,6 +39,12 @@ public class LabServiceImpl implements LabService {
         Optional<Lab> existingOpt = labRepository.findById(lab.getId());
         if (existingOpt.isPresent()) {
             Lab existing = existingOpt.get();
+            if (lab.getCapacity() != null) {
+                validateLab(lab);
+            }
+            if (lab.getCollegeId() != null) {
+                validateCollege(lab.getCollegeId());
+            }
             if (lab.getLabName() != null) { existing.setLabName(lab.getLabName()); }
             if (lab.getLocation() != null) { existing.setLocation(lab.getLocation()); }
             if (lab.getCapacity() != null) { existing.setCapacity(lab.getCapacity()); }
@@ -47,6 +55,18 @@ public class LabServiceImpl implements LabService {
             return true;
         }
         return false;
+    }
+
+    private void validateLab(Lab lab) {
+        if (lab.getCapacity() == null || lab.getCapacity() < 1 || lab.getCapacity() > 200) {
+            throw new IllegalArgumentException("实验室容量范围为1-200");
+        }
+    }
+
+    private void validateCollege(Long collegeId) {
+        if (collegeId != null && collegeRepository != null && !collegeRepository.existsById(collegeId)) {
+            throw new IllegalArgumentException("学院不存在");
+        }
     }
 
     @Override

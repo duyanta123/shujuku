@@ -93,7 +93,8 @@ export async function jwtVerify(request, reply) {
         url: request.url,
         ip: request.ip,
       })
-      reply.clearCookie(config.jwt.cookieName)
+      reply.clearCookie(config.jwt.accessTokenCookieName, { path: '/' })
+      reply.clearCookie(config.jwt.cookieName, { path: '/' })
       reply.code(401).send({
         success: false,
         message: 'Token 已过期，请重新登录',
@@ -109,7 +110,6 @@ export async function jwtVerify(request, reply) {
         url: request.url,
         ip: request.ip,
         tokenSource: finalTokenSource,
-        tokenPreview: `${token.substring(0, 10)}...${token.substring(token.length - 5)}`,
       })
     } else {
       log.error('JWT 验证失败：未知错误', {
@@ -122,10 +122,11 @@ export async function jwtVerify(request, reply) {
       })
     }
 
+    reply.clearCookie(config.jwt.accessTokenCookieName, { path: '/' })
+    reply.clearCookie(config.jwt.cookieName, { path: '/' })
     reply.code(401).send({
       success: false,
       message: 'Token 无效',
     })
   }
 }
-

@@ -5,6 +5,7 @@ import com.labcourse.exception.AccountLockedException;
 import com.labcourse.repository.AdminRepository;
 import com.labcourse.service.AdminService;
 import com.labcourse.service.LoginAttemptService;
+import com.labcourse.util.PasswordPolicy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -56,6 +57,7 @@ public class AdminServiceImpl implements AdminService {
 
     @Override
     public boolean save(Admin admin) {
+        PasswordPolicy.requireValid(admin.getPassword());
         admin.setPassword(passwordEncoder.encode(admin.getPassword()));
         adminRepository.save(admin);
         return true;
@@ -68,6 +70,7 @@ public class AdminServiceImpl implements AdminService {
             Admin existing = existingOpt.get();
             existing.setUsername(admin.getUsername());
             if (admin.getPassword() != null && !admin.getPassword().isEmpty()) {
+                PasswordPolicy.requireValid(admin.getPassword());
                 existing.setPassword(passwordEncoder.encode(admin.getPassword()));
             }
             adminRepository.save(existing);

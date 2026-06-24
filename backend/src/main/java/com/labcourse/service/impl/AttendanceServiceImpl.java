@@ -362,6 +362,12 @@ public class AttendanceServiceImpl implements AttendanceService {
     @Override
     public List<Map<String, Object>> getStudentHistory(Long studentId) {
         List<Attendance> records = attendanceRepository.findByStudentIdOrderByAttendanceDateDesc(studentId);
+        Set<Long> courseIds = records.stream()
+                .map(Attendance::getCourseId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, Course> courseMap = courseRepository.findAllById(courseIds).stream()
+                .collect(Collectors.toMap(Course::getId, c -> c));
         List<Map<String, Object>> result = new ArrayList<>();
 
         for (Attendance record : records) {
@@ -372,11 +378,11 @@ public class AttendanceServiceImpl implements AttendanceService {
             item.put("attendanceDate", record.getAttendanceDate() != null ? record.getAttendanceDate().toString() : null);
             item.put("createdAt", record.getCreatedAt() != null ? record.getCreatedAt().toString() : null);
 
-            // 关联课程名称
-            courseRepository.findById(record.getCourseId()).ifPresent(course -> {
+            Course course = courseMap.get(record.getCourseId());
+            if (course != null) {
                 item.put("courseName", course.getCourseName());
                 item.put("courseTime", course.getCourseTime());
-            });
+            }
 
             result.add(item);
         }

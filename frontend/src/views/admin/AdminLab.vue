@@ -34,7 +34,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="容量" prop="capacity">
-          <el-input-number v-model="labForm.capacity" />
+          <el-input-number v-model="labForm.capacity" :min="1" :max="200" />
         </el-form-item>
       </el-form>
       <template #footer>

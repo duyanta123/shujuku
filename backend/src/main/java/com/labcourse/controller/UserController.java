@@ -74,7 +74,7 @@ public class UserController {
         } catch (RuntimeException e) {
             logger.warn("Change password failed: {}", e.getMessage());
             result.put("success", false);
-            result.put("message", "密码修改失败");
+            result.put("message", e instanceof IllegalArgumentException ? e.getMessage() : "密码修改失败");
         }
         return ResponseEntity.ok(result);
     }

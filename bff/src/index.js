@@ -53,8 +53,8 @@ async function buildApp() {
 
   // Security fix (HIGH-005): 全局速率限制防止暴力破解
   await app.register(rateLimit, {
-    max: 100,                    // 每个IP每分钟最多100次请求
-    timeWindow: '1 minute',
+    max: config.rateLimit.max,
+    timeWindow: config.rateLimit.timeWindow,
     keyGenerator: (request) => request.ip,
   })
 

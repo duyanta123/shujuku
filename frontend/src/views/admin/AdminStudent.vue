@@ -83,7 +83,7 @@
         <strong>{{ resetTarget.name }}</strong>
       </div>
       <p style="color: var(--color-text-muted); font-size: 0.88rem; padding: 12px 0;">
-        确定要重置该学生的密码为初始密码（123456）吗？
+        确定要重置该学生的密码吗？系统将生成一次性临时密码。
       </p>
       <template #footer>
         <el-button @click="passwordDialogVisible = false">取消</el-button>
@@ -206,8 +206,15 @@ const handlePasswordSave = async () => {
   try {
     const result = await resetStudentPassword(resetTarget.value.id)
     if (result.success) {
-      ElMessage.success('密码重置成功')
+      const temporaryPassword = result.data?.temporaryPassword
       passwordDialogVisible.value = false
+      if (temporaryPassword) {
+        await ElMessageBox.alert(`临时密码：${temporaryPassword}`, '密码重置成功', {
+          confirmButtonText: '确定',
+        })
+      } else {
+        ElMessage.success('密码重置成功')
+      }
     } else {
       ElMessage.error(result.message || '密码重置失败')
     }

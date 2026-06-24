@@ -38,7 +38,16 @@
           active-class="active"
           @click="sidebarOpen = false"
         >
-          <span class="nav-icon" v-html="item.icon"></span>
+          <span class="nav-icon">
+            <svg class="nav-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <component
+                :is="node.tag"
+                v-for="(node, index) in iconNodes(item.icon)"
+                :key="index"
+                v-bind="node.attrs"
+              />
+            </svg>
+          </span>
           <span>{{ item.label }}</span>
         </router-link>
       </nav>
@@ -122,6 +131,61 @@ const displayAccount = computed(() => {
 
 const placeholder = computed(() => props.config.placeholder)
 
+const ICONS = {
+  course: [
+    { tag: 'path', attrs: { d: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20' } },
+    { tag: 'path', attrs: { d: 'M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z' } },
+  ],
+  student: [
+    { tag: 'path', attrs: { d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' } },
+    { tag: 'circle', attrs: { cx: '9', cy: '7', r: '4' } },
+    { tag: 'path', attrs: { d: 'M23 21v-2a4 4 0 0 0-3-3.87' } },
+    { tag: 'path', attrs: { d: 'M16 3.13a4 4 0 0 1 0 7.75' } },
+  ],
+  teacher: [
+    { tag: 'path', attrs: { d: 'M12 20h9' } },
+    { tag: 'path', attrs: { d: 'M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z' } },
+  ],
+  lab: [
+    { tag: 'path', attrs: { d: 'M10 2v7.31a2 2 0 0 1-.367 1.15L3 21h18l-6.633-10.54A2 2 0 0 1 14 9.31V2' } },
+    { tag: 'line', attrs: { x1: '8', y1: '2', x2: '16', y2: '2' } },
+    { tag: 'line', attrs: { x1: '12', y1: '8', x2: '12', y2: '12' } },
+  ],
+  college: [
+    { tag: 'path', attrs: { d: 'M22 10v6M2 10l10-5 10 5-10 5z' } },
+    { tag: 'path', attrs: { d: 'M6 12v5c3 3 9 3 12 0v-5' } },
+  ],
+  score: [
+    { tag: 'path', attrs: { d: 'M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2' } },
+    { tag: 'rect', attrs: { x: '8', y: '2', width: '8', height: '4', rx: '1', ry: '1' } },
+  ],
+  attendance: [
+    { tag: 'path', attrs: { d: 'M9 11l3 3L22 4' } },
+    { tag: 'path', attrs: { d: 'M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11' } },
+  ],
+  myCourse: [
+    { tag: 'path', attrs: { d: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20' } },
+    { tag: 'path', attrs: { d: 'M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z' } },
+    { tag: 'path', attrs: { d: 'M9 9h6M9 13h6M9 17h4' } },
+  ],
+  schedule: [
+    { tag: 'rect', attrs: { x: '3', y: '4', width: '18', height: '18', rx: '2', ry: '2' } },
+    { tag: 'line', attrs: { x1: '16', y1: '2', x2: '16', y2: '6' } },
+    { tag: 'line', attrs: { x1: '8', y1: '2', x2: '8', y2: '6' } },
+    { tag: 'line', attrs: { x1: '3', y1: '10', x2: '21', y2: '10' } },
+    { tag: 'path', attrs: { d: 'M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01' } },
+  ],
+  history: [
+    { tag: 'line', attrs: { x1: '18', y1: '20', x2: '18', y2: '10' } },
+    { tag: 'line', attrs: { x1: '12', y1: '20', x2: '12', y2: '4' } },
+    { tag: 'line', attrs: { x1: '6', y1: '20', x2: '6', y2: '14' } },
+  ],
+}
+
+function iconNodes(name) {
+  return ICONS[name] || ICONS.course
+}
+
 const onAvatarError = (e) => {
   e.target.src = props.config.placeholder
 }
@@ -131,10 +195,7 @@ const onAvatarUpdated = (url) => {
 }
 
 const handleLogout = async () => {
-  const BFF_ENABLED = import.meta.env.VITE_BFF_ENABLED !== 'false'
-  if (BFF_ENABLED) {
-    try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }) } catch { /* 静默 */ }
-  }
+  try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }) } catch { /* 静默 */ }
   localStorage.removeItem('user')
   userStore.reset()
   router.push('/login')
@@ -142,7 +203,7 @@ const handleLogout = async () => {
 
 onMounted(() => {
   userStore.initFromLocalStorage()
-  userStore.fetchProfile()
+  userStore.ensureProfile().catch(() => {})
   document.addEventListener('keydown', onKeydown)
 })
 
@@ -309,9 +370,13 @@ watch(sidebarOpen, (open) => {
   flex-shrink: 0;
 }
 
-.nav-icon :deep(svg) {
+.nav-svg {
   width: 20px;
   height: 20px;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .sidebar-footer {

@@ -12,6 +12,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
+import java.util.Set;
 import java.util.Map;
 import java.util.Optional;
 
@@ -20,12 +21,15 @@ import java.util.Optional;
 public class CollegeServiceImpl implements CollegeService {
 
     private static final Logger logger = LoggerFactory.getLogger(CollegeServiceImpl.class);
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("id", "name", "status", "createdAt", "updatedAt");
+    private static final Set<String> ALLOWED_STATUS = Set.of("ACTIVE", "INACTIVE", "all");
 
     @Autowired
     private CollegeRepository collegeRepository;
 
     @Override
     public Map<String, Object> list(String name, String status, int page, int size, String sortBy, String sortDir) {
+        validateListParams(status, page, size, sortBy, sortDir);
         Sort sort = sortDir.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         PageRequest pageRequest = PageRequest.of(page, size, sort);
 
@@ -49,6 +53,24 @@ public class CollegeServiceImpl implements CollegeService {
         result.put("totalPages", collegePage.getTotalPages());
         result.put("currentPage", collegePage.getNumber());
         return result;
+    }
+
+    private void validateListParams(String status, int page, int size, String sortBy, String sortDir) {
+        if (page < 0) {
+            throw new IllegalArgumentException("page 不能小于 0");
+        }
+        if (size < 1 || size > 1000) {
+            throw new IllegalArgumentException("size 范围为 1-1000");
+        }
+        if (!ALLOWED_SORT_FIELDS.contains(sortBy)) {
+            throw new IllegalArgumentException("sortBy 参数非法");
+        }
+        if (!"asc".equalsIgnoreCase(sortDir) && !"desc".equalsIgnoreCase(sortDir)) {
+            throw new IllegalArgumentException("sortDir 参数非法");
+        }
+        if (status != null && !ALLOWED_STATUS.contains(status)) {
+            throw new IllegalArgumentException("status 参数非法");
+        }
     }
 
     @Override

@@ -70,8 +70,6 @@ import { getAttendanceHistory } from '../../api/attendance'
 const loading = ref(false)
 const records = ref([])
 
-const user = computed(() => JSON.parse(localStorage.getItem('user') || '{}'))
-
 const filteredRecords = computed(() => records.value)
 
 const stats = computed(() => {
@@ -98,7 +96,7 @@ function statusClass(status) {
 async function loadHistory() {
   loading.value = true
   try {
-    const result = await getAttendanceHistory(user.value.id)
+    const result = await getAttendanceHistory()
     if (result.success) {
       records.value = result.data || []
     }

@@ -11,10 +11,11 @@ export function uploadAvatar(file) {
   })
 }
 
-export function getUserProfile() {
+export function getUserProfile(options = {}) {
   return request({
     url: '/user/profile',
-    method: 'get'
+    method: 'get',
+    ...options,
   })
 }
 

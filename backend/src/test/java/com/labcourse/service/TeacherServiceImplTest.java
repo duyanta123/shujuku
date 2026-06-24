@@ -153,7 +153,7 @@ class TeacherServiceImplTest {
     @Test
     @DisplayName("save: 应加密密码后保存教师")
     void save_ShouldEncodePasswordAndSave() {
-        String rawPassword = "plain_password";
+        String rawPassword = "Plain123!";
         String encodedPassword = "encoded_password";
 
         when(passwordEncoder.encode(rawPassword)).thenReturn(encodedPassword);
@@ -293,15 +293,15 @@ class TeacherServiceImplTest {
 
         Teacher update = new Teacher();
         update.setId(1L);
-        update.setPassword("new_password");
+        update.setPassword("NewPass1!");
 
         when(teacherRepository.findById(1L)).thenReturn(Optional.of(existing));
-        when(passwordEncoder.encode("new_password")).thenReturn("new_encoded");
+        when(passwordEncoder.encode("NewPass1!")).thenReturn("new_encoded");
 
         boolean result = service.updateById(update);
         assertTrue(result);
         assertEquals("new_encoded", existing.getPassword());
-        verify(passwordEncoder).encode("new_password");
+        verify(passwordEncoder).encode("NewPass1!");
         verify(teacherRepository).save(existing);
     }
 

@@ -352,30 +352,28 @@ class AttendanceLoggingTest {
     }
 
     // ──────────────────────────────────────────────
-    // 场景5: 学生不存在
+    // 场景5: 请求体 studentId 被忽略
     // ──────────────────────────────────────────────
     @Test
     @Order(5)
-    @DisplayName("场景5 - 学生不存在：验证非法用户签到时的日志记录")
+    @DisplayName("场景5 - 请求体 studentId 被忽略：验证使用当前登录学生签到")
     void scenario5_StudentNotFound() throws Exception {
         logAppender.list.clear();
 
         String body = objectMapper.writeValueAsString(
                 Map.of("studentId", BAD_STUDENT, "courseId", activeCourseId));
 
-        mockMvc.perform(post("/api/attendance/check-in")
+                mockMvc.perform(post("/api/attendance/check-in")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("Authorization", "Bearer " + studentToken)
                         .content(body))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("无权为其他学生签到"));
+                .andExpect(status().isOk());
 
-        assertFalse(getAllLogLines().stream().anyMatch(msg -> msg.contains("开始签到")),
-                "Unauthorized cross-student check-in should be rejected before service logging");
-        assertLogNotContains("学生已加载");
+        assertLogContains("开始签到");
+        assertLogContains("studentId=" + STUDENT_ID);
+        assertLogNotContains("studentId=" + BAD_STUDENT);
 
-        System.out.println("=== 场景5 学生不存在日志验证通过 ===");
+        System.out.println("=== 场景5 请求体 studentId 被忽略日志验证通过 ===");
         getAllLogLines().forEach(System.out::println);
     }
 

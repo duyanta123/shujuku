@@ -17,169 +17,90 @@ import AdminTeacher from '../views/admin/AdminTeacher.vue'
 import AdminCourse from '../views/admin/AdminCourse.vue'
 import AdminLab from '../views/admin/AdminLab.vue'
 import AdminCollegeMajor from '../views/admin/AdminCollegeMajor.vue'
+import userStore from '../stores/userStore'
 
 const routes = [
-  {
-    path: '/',
-    redirect: '/login'
-  },
-  {
-    path: '/login',
-    name: 'Login',
-    component: Login
-  },
+  { path: '/', redirect: '/login' },
+  { path: '/login', name: 'Login', component: Login },
   {
     path: '/student',
     component: StudentLayout,
     children: [
-      {
-        path: '',
-        redirect: '/student/course'
-      },
-      {
-        path: 'course',
-        name: 'StudentCourse',
-        component: StudentCourse
-      },
-      {
-        path: 'my-course',
-        name: 'StudentMyCourse',
-        component: StudentMyCourse
-      },
-      {
-        path: 'schedule',
-        name: 'StudentSchedule',
-        component: StudentSchedule
-      },
-      {
-        path: 'attendance',
-        name: 'StudentAttendance',
-        component: StudentAttendance
-      },
-      {
-        path: 'attendance-history',
-        name: 'StudentAttendanceHistory',
-        component: StudentAttendanceHistory
-      }
-    ]
+      { path: '', redirect: '/student/course' },
+      { path: 'course', name: 'StudentCourse', component: StudentCourse },
+      { path: 'my-course', name: 'StudentMyCourse', component: StudentMyCourse },
+      { path: 'schedule', name: 'StudentSchedule', component: StudentSchedule },
+      { path: 'attendance', name: 'StudentAttendance', component: StudentAttendance },
+      { path: 'attendance-history', name: 'StudentAttendanceHistory', component: StudentAttendanceHistory },
+    ],
   },
   {
     path: '/teacher',
     component: TeacherLayout,
     children: [
-      {
-        path: '',
-        redirect: '/teacher/course'
-      },
-      {
-        path: 'course',
-        name: 'TeacherCourse',
-        component: TeacherCourse
-      },
-      {
-        path: 'student-list/:courseId',
-        name: 'TeacherStudentList',
-        component: TeacherStudentList
-      },
-      {
-        path: 'score',
-        name: 'TeacherScore',
-        component: TeacherScore
-      },
-      {
-        path: 'attendance',
-        name: 'TeacherAttendance',
-        component: TeacherAttendance
-      }
-    ]
+      { path: '', redirect: '/teacher/course' },
+      { path: 'course', name: 'TeacherCourse', component: TeacherCourse },
+      { path: 'student-list/:courseId', name: 'TeacherStudentList', component: TeacherStudentList },
+      { path: 'score', name: 'TeacherScore', component: TeacherScore },
+      { path: 'attendance', name: 'TeacherAttendance', component: TeacherAttendance },
+    ],
   },
   {
     path: '/admin',
     component: AdminLayout,
     children: [
-      {
-        path: '',
-        redirect: '/admin/student'
-      },
-      {
-        path: 'student',
-        name: 'AdminStudent',
-        component: AdminStudent
-      },
-      {
-        path: 'teacher',
-        name: 'AdminTeacher',
-        component: AdminTeacher
-      },
-      {
-        path: 'course',
-        name: 'AdminCourse',
-        component: AdminCourse
-      },
-      {
-        path: 'lab',
-        name: 'AdminLab',
-        component: AdminLab
-      },
-      {
-        path: 'college-major',
-        name: 'AdminCollegeMajor',
-        component: AdminCollegeMajor
-      }
-    ]
-  }
+      { path: '', redirect: '/admin/student' },
+      { path: 'student', name: 'AdminStudent', component: AdminStudent },
+      { path: 'teacher', name: 'AdminTeacher', component: AdminTeacher },
+      { path: 'course', name: 'AdminCourse', component: AdminCourse },
+      { path: 'lab', name: 'AdminLab', component: AdminLab },
+      { path: 'college-major', name: 'AdminCollegeMajor', component: AdminCollegeMajor },
+    ],
+  },
 ]
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes,
 })
 
-// 路由守卫
-router.beforeEach((to, from, next) => {
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
-  const isLoggedIn = user && user.token
-  // Security fix (HIGH-003): BFF模式下不存储角色信息，信任后端API授权
-  const isBffMode = user._bffMode === true
+function requiredRole(path) {
+  if (path.startsWith('/student')) return 'student'
+  if (path.startsWith('/teacher')) return 'teacher'
+  if (path.startsWith('/admin')) return 'admin'
+  return ''
+}
 
-  // 检查路由是否需要特定角色
-  const requiresRole = to.path.startsWith('/student') || to.path.startsWith('/teacher') || to.path.startsWith('/admin')
+router.beforeEach(async (to) => {
+  const role = requiredRole(to.path)
 
   if (to.path === '/login') {
-    // 如果已登录，跳转到对应首页
-    if (isLoggedIn) {
-      if (isBffMode) {
-        // BFF模式下无角色信息，跳转到通用首页
-        next('/student')
-      } else {
-        next(`/${user.role}`)
-      }
-    } else {
-      next()
+    try {
+      await userStore.ensureProfile({
+        skipAuthRefresh: true,
+        skipAuthRedirect: true,
+        skipErrorMessage: true,
+      })
+      return `/${userStore.role}`
+    } catch {
+      userStore.reset()
+      localStorage.removeItem('user')
+      return true
     }
-  } else if (requiresRole) {
-    // 检查是否登录
-    if (!isLoggedIn) {
-      next('/login')
-    } else if (isBffMode) {
-      // BFF模式下信任后端API授权，前端路由不做角色校验
-      next()
-    } else {
-      // 检查角色是否匹配
-      const isStudentRoute = to.path.startsWith('/student') && user.role === 'student'
-      const isTeacherRoute = to.path.startsWith('/teacher') && user.role === 'teacher'
-      const isAdminRoute = to.path.startsWith('/admin') && user.role === 'admin'
-
-      if (isStudentRoute || isTeacherRoute || isAdminRoute) {
-        next()
-      } else {
-        // 角色不匹配，跳转到登录或对应首页
-        next(`/${user.role}`)
-      }
-    }
-  } else {
-    next()
   }
+
+  if (!role) return true
+
+  try {
+    await userStore.ensureProfile()
+  } catch {
+    userStore.reset()
+    localStorage.removeItem('user')
+    return '/login'
+  }
+
+  if (userStore.role === role) return true
+  return userStore.role ? `/${userStore.role}` : '/login'
 })
 
 export default router

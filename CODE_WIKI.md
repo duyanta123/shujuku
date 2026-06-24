@@ -762,7 +762,7 @@ BFF (Backend For Frontend) 层是基于 **Fastify 4.x** 构建的 Node.js 中间
 
 核心函数 `buildApp()` 构建 Fastify 应用：
 
-1. 注册安全插件：`@fastify/helmet` (CSP + X-Frame-Options: DENY)、`@fastify/rate-limit` (100次/分钟/IP)
+1. 注册安全插件：`@fastify/helmet` (CSP + X-Frame-Options: DENY)、`@fastify/rate-limit` (生产默认100次/分钟/IP，本地可通过 `RATE_LIMIT_MAX` 调整)
 2. 注册基础插件：`@fastify/cors` (localhost:3000, credentials=true, 显式 allowedHeaders)、`@fastify/cookie`、`@fastify/formbody` (3MB限制)
 3. 注册 multipart/form-data content type parser（透传 buffer 给后端）
 4. 注册请求日志钩子
@@ -785,7 +785,7 @@ BFF (Backend For Frontend) 层是基于 **Fastify 4.x** 构建的 Node.js 中间
 | JWT 有效期 | `JWT_EXPIRATION` | `86400000` (24h) |
 | Access Token Cookie | `bff_access_token` | 30分钟 |
 | Refresh Token Cookie | `bff_refresh_token` | 7天 |
-| 兼容旧版 Cookie | `bff_token` | 24小时 |
+| 兼容旧版 Cookie | `bff_token` | 仅受保护接口兼容读取，refresh 不接受 |
 | 日志级别 | `LOG_LEVEL` | `info` |
 
 ---
@@ -796,7 +796,7 @@ BFF (Backend For Frontend) 层是基于 **Fastify 4.x** 构建的 Node.js 中间
 
 **文件**: [`auth.js`](file:///d:/789/bff/src/routes/auth.js)
 
-**`createLoginHandler` 工厂函数**: 创建通用的登录处理函数，支持双Token 签发和旧版单Token 兼容。
+**`createLoginHandler` 工厂函数**: 创建通用的登录处理函数，签发 Access/Refresh 双 Token Cookie。
 
 ```
 登录流程 (双Token模式):
@@ -815,7 +815,7 @@ BFF (Backend For Frontend) 层是基于 **Fastify 4.x** 构建的 Node.js 中间
 - `/api/teacher/login` → `teacherNo`
 - `/api/admin/login` → `username`
 
-**`/api/auth/refresh`**: 读取 `bff_refresh_token` Cookie → 本地预验证 JWT 格式和过期 → 透传到后端执行 Token 轮转刷新 → 更新两个 Cookie
+**`/api/auth/refresh`**: 仅读取 `bff_refresh_token` HttpOnly Cookie → 本地预验证 JWT 格式和过期 → 透传到后端执行 Token 轮转刷新 → 更新 Access/Refresh 两个 Cookie。Authorization Header 和旧版 `bff_token` 不触发刷新。
 
 **`/api/auth/logout`**: 清除 `bff_access_token`、`bff_refresh_token`、`bff_token` 三个 Cookie → 通知后端清除 refreshToken
 
@@ -829,11 +829,11 @@ BFF (Backend For Frontend) 层是基于 **Fastify 4.x** 构建的 Node.js 中间
 
 | 功能 | 说明 |
 |------|------|
-| Token 来源 | 优先从 Cookie (`bff_access_token`) 读取，fallback 到 `bff_token` (兼容旧版)，再 fallback 到 `Authorization: Bearer` 头 |
+| Token 来源 | 受保护接口优先从 Cookie (`bff_access_token`) 读取，兼容旧版 `bff_token`；`/api/auth/refresh` 仅接受 `bff_refresh_token` HttpOnly Cookie |
 | 验证逻辑 | 使用 `jsonwebtoken.verify()` 验证签名和过期时间，支持 HS256/HS384/HS512 算法 |
 | Token 透传 | 验证通过后将 Token 重新附加到 `request.headers.authorization` |
 | 用户注入 | 验证通过后设置 `request.user = { userId, username, role }` |
-| 错误处理 | 过期返回 401 + "Token 已过期" 并清除 Cookie，无效返回 401 + "Token 无效" |
+| 错误处理 | 过期返回 401 + "Token 已过期" 并清除 `bff_access_token`/`bff_token`，无效返回 401 + "Token 无效" |
 
 #### errorHandler
 
@@ -1919,7 +1919,9 @@ npx playwright test tests/e2e/college/      # 按分类运行
 npx playwright show-report playwright-report # 查看报告
 ```
 
-### 10.8 默认账号
+### 10.8 本地演示默认账号
+
+以下账号仅适用于本地 demo seed 数据。生产环境不得导入默认账号数据，必须使用独立初始化数据和强密码。
 
 | 角色 | 账号 | 密码 |
 |------|------|------|
@@ -1989,7 +1991,7 @@ flowchart TD
     subgraph BFF_Detail["BFF 处理"]
         direction TB
         B1["Helmet → CORS → RateLimit"]
-        B2["Cookie 提取<br/>bff_access_token → bff_token → Auth Header"]
+        B2["受保护接口 Cookie 提取<br/>bff_access_token → bff_token → Auth Header<br/>refresh 仅 bff_refresh_token"]
         B3["公开路由 → 直接转发<br/>认证路由 → JWT 验证"]
         B4["transparentProxy<br/>X-Forwarded 清理 → 附加 Authorization 头"]
     end

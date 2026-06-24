@@ -69,7 +69,7 @@
           <span v-if="courseTypeDisabled" class="form-hint">该课程已有学生选课，无法修改课程类型</span>
         </el-form-item>
         <el-form-item label="最大人数" prop="maxCount">
-          <el-input-number v-model="courseForm.maxCount" />
+          <el-input-number v-model="courseForm.maxCount" :min="1" :max="100" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -87,6 +87,7 @@ import { getCourseListSimple, addCourse, updateCourse, deleteCourse } from '../.
 import { getTeacherList } from '../../api/teacher'
 import { getLabList } from '../../api/lab'
 import { getCollegeList } from '../../api/college'
+import { parseCourseTime } from '../../utils/scheduleParser'
 
 const courseList = ref([])
 const teacherList = ref([])
@@ -102,6 +103,14 @@ const filterCollegeId = ref('')
 const loading = ref(false)
 const courseForm = ref({ id: null, courseName: '', teacherId: null, labId: null, courseTime: '', collegeId: null, courseType: 'ELECTIVE', maxCount: 30 })
 
+const validateCourseTime = (_rule, value, callback) => {
+  if (!parseCourseTime(value).length) {
+    callback(new Error('请输入有效时间，如：周一 1-2节'))
+    return
+  }
+  callback()
+}
+
 const courseRules = {
   courseName: [
     { required: true, message: '请输入课程名', trigger: 'blur' }
@@ -113,7 +122,8 @@ const courseRules = {
     { required: true, message: '请选择实验室', trigger: 'change' }
   ],
   courseTime: [
-    { required: true, message: '请输入上课时间', trigger: 'blur' }
+    { required: true, message: '请输入上课时间', trigger: 'blur' },
+    { validator: validateCourseTime, trigger: 'blur' }
   ],
   collegeId: [
     { required: true, message: '请选择学院', trigger: 'change' }

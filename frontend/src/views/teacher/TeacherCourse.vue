@@ -36,9 +36,9 @@
         </div>
         <div class="card-footer">
           <div class="capacity-bar">
-            <div class="bar-fill" :style="{ width: (course.selected_count / course.max_count * 100) + '%' }"></div>
+            <div class="bar-fill" :style="{ width: capacityPercent(course) + '%' }"></div>
           </div>
-          <span class="capacity-text">{{ course.selected_count }} / {{ course.max_count }} 人</span>
+          <span class="capacity-text">{{ capacityText(course) }}</span>
         </div>
       </div>
     </div>
@@ -46,25 +46,33 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getCourseList } from '../../api/course'
+import { getMyTeachingCourses } from '../../api/course'
 
 const router = useRouter()
 const courseList = ref([])
 
-const user = computed(() => JSON.parse(localStorage.getItem('user') || '{}'))
-
 const loadCourses = async () => {
   try {
-    const result = await getCourseList()
+    const result = await getMyTeachingCourses()
     if (result.success) {
-      courseList.value = result.data.filter(c => c.teacher_name === user.value.name)
+      courseList.value = result.data || []
     }
   } catch (error) {
     ElMessage.error('加载课程列表失败')
   }
+}
+
+const capacityPercent = (course) => {
+  if (!Number(course.max_count)) return 0
+  return Math.min(100, Math.max(0, Number(course.selected_count || 0) / Number(course.max_count) * 100))
+}
+
+const capacityText = (course) => {
+  if (!Number(course.max_count) || Number(course.max_count) <= 0) return '容量异常'
+  return `${course.selected_count || 0} / ${course.max_count} 人`
 }
 
 const viewStudentList = (course) => {

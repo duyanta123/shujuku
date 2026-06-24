@@ -1,6 +1,7 @@
 -- 实验选课系统数据库
 -- MySQL 8.0
 -- 版本: 2.1 — 新增学院/专业管理层级模型、课程分类、必修课配置
+-- 注意：本脚本包含本地演示账号 seed 数据，生产环境不得直接导入。
 
 -- 创建数据库
 CREATE DATABASE IF NOT EXISTS lab_course_system

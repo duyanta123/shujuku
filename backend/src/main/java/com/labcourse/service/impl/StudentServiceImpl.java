@@ -17,6 +17,7 @@ import com.labcourse.repository.SelectionRepository;
 import com.labcourse.repository.StudentRepository;
 import com.labcourse.service.LoginAttemptService;
 import com.labcourse.service.StudentService;
+import com.labcourse.util.PasswordPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,7 +25,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.security.SecureRandom;
 import java.util.List;
 import java.util.Optional;
 
@@ -33,9 +33,6 @@ import java.util.Optional;
 public class StudentServiceImpl implements StudentService {
 
     private static final Logger logger = LoggerFactory.getLogger(StudentServiceImpl.class);
-
-    private static final String CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    private static final SecureRandom RANDOM = new SecureRandom();
 
     @Autowired
     private StudentRepository studentRepository;
@@ -101,6 +98,7 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public boolean save(Student student) {
+        PasswordPolicy.requireValid(student.getPassword());
         student.setPassword(passwordEncoder.encode(student.getPassword()));
         studentRepository.save(student);
         if (student.getMajorId() != null) {
@@ -131,6 +129,7 @@ public class StudentServiceImpl implements StudentService {
                 existing.setMajorId(student.getMajorId());
             }
             if (student.getPassword() != null && !student.getPassword().isEmpty()) {
+                PasswordPolicy.requireValid(student.getPassword());
                 existing.setPassword(passwordEncoder.encode(student.getPassword()));
             }
             studentRepository.save(existing);
@@ -171,7 +170,7 @@ public class StudentServiceImpl implements StudentService {
         Optional<Student> existingOpt = studentRepository.findById(id);
         if (existingOpt.isPresent()) {
             Student existing = existingOpt.get();
-            String newPassword = generateRandomPassword();
+            String newPassword = PasswordPolicy.generateTemporaryPassword();
             existing.setPassword(passwordEncoder.encode(newPassword));
             existing.setRefreshToken(null);
             studentRepository.save(existing);
@@ -188,6 +187,7 @@ public class StudentServiceImpl implements StudentService {
             if (!passwordEncoder.matches(oldPassword, existing.getPassword())) {
                 return false;
             }
+            PasswordPolicy.requireValid(newPassword);
             existing.setPassword(passwordEncoder.encode(newPassword));
             existing.setRefreshToken(null);
             studentRepository.save(existing);
@@ -222,11 +222,4 @@ public class StudentServiceImpl implements StudentService {
         }
     }
 
-    private String generateRandomPassword() {
-        StringBuilder sb = new StringBuilder(8);
-        for (int i = 0; i < 8; i++) {
-            sb.append(CHARS.charAt(RANDOM.nextInt(CHARS.length())));
-        }
-        return sb.toString();
-    }
 }
