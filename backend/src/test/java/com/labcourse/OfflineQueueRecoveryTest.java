@@ -48,9 +48,8 @@ class OfflineQueueRecoveryTest {
             1, 1L, 2, 2L, 3, 3L, 4, 4L, 5, 5L
     );
     private Long activeCourseId;  // course matching today's day of week
+    private Long alternateCourseId;
     private boolean isWeekend;
-
-    private static final Long CID2 = 4L; // 计算机网络 (周四 7-8节) - for multi-course tests
 
     @BeforeEach
     void setUp() {
@@ -61,13 +60,14 @@ class OfflineQueueRecoveryTest {
         if (isWeekend) {
             activeCourseId = 3L; // fallback
         }
+        alternateCourseId = activeCourseId.equals(4L) ? 3L : 4L;
         // Clean up test data from previous runs
         cleanUp(SID1, activeCourseId);
         cleanUp(SID2, activeCourseId);
         cleanUp(SID3, activeCourseId);
-        cleanUp(SID1, CID2);
-        cleanUp(SID2, CID2);
-        cleanUp(SID3, CID2);
+        cleanUp(SID1, alternateCourseId);
+        cleanUp(SID2, alternateCourseId);
+        cleanUp(SID3, alternateCourseId);
     }
 
     private void cleanUp(Long studentId, Long courseId) {
@@ -102,7 +102,7 @@ class OfflineQueueRecoveryTest {
     void testQueue_MultiStudentQueuing() {
         Map<String, Map<String, Long>> queue = new LinkedHashMap<>();
         Long[] students = {SID1, SID2, SID3};
-        Long[] courses = {activeCourseId, CID2};
+        Long[] courses = {activeCourseId, alternateCourseId};
 
         for (Long sid : students) {
             for (Long cid : courses) {
@@ -391,7 +391,7 @@ class OfflineQueueRecoveryTest {
         while (attempts < maxRetries && !success) {
             attempts++;
             try {
-                Map<String, Object> result = attendanceService.checkIn(SID3, CID2);
+                Map<String, Object> result = attendanceService.checkIn(SID3, alternateCourseId);
                 success = (Boolean) result.get("success");
             } catch (Exception e) {
                 // Simulate transient failure - retry
