@@ -249,6 +249,59 @@ class StudentServiceImplTest {
     }
 
     @Test
+    @DisplayName("updateById: 专业变更过程中发生异常应确保事务回滚一致性")
+    void updateById_MajorChangeWithException_ShouldMaintainConsistency() {
+        Student existing = new Student();
+        existing.setId(1L);
+        existing.setStudentNo("S001");
+        existing.setName("张三");
+        existing.setMajorId(1L);
+
+        Student update = new Student();
+        update.setId(1L);
+        update.setMajorId(2L);
+
+        when(studentRepository.findById(1L)).thenReturn(Optional.of(existing));
+
+        // 旧专业必修课
+        MajorRequiredCourse oldMrc = new MajorRequiredCourse();
+        oldMrc.setMajorId(1L);
+        oldMrc.setCourseId(10L);
+        when(majorRequiredCourseRepository.findByMajorId(1L)).thenReturn(List.of(oldMrc));
+
+        Selection oldSelection = new Selection();
+        oldSelection.setId(100L);
+        oldSelection.setStudentId(1L);
+        oldSelection.setCourseId(10L);
+        when(selectionRepository.findByStudentIdAndCourseId(1L, 10L))
+                .thenReturn(Optional.of(oldSelection));
+
+        // 新专业必修课
+        MajorRequiredCourse newMrc = new MajorRequiredCourse();
+        newMrc.setMajorId(2L);
+        newMrc.setCourseId(20L);
+        when(majorRequiredCourseRepository.findByMajorId(2L)).thenReturn(List.of(newMrc));
+
+        Course newCourse = new Course();
+        newCourse.setId(20L);
+        newCourse.setCourseName("数据库原理");
+        when(courseRepository.findById(20L)).thenReturn(Optional.of(newCourse));
+        when(selectionRepository.findByStudentIdAndCourseId(1L, 20L)).thenReturn(Optional.empty());
+
+        // 模拟在保存新选课时抛出异常
+        when(selectionRepository.save(any())).thenThrow(new RuntimeException("数据库连接失败"));
+
+        // 调用方法，期望抛出异常
+        assertThrows(RuntimeException.class, () -> service.updateById(update));
+
+        // 验证：由于@Transactional注解，整个操作应该回滚
+        // 在实际事务环境下，studentRepository.save(existing)也会回滚
+        // 此测试验证异常传播正确，事务边界清晰
+        verify(selectionRepository).delete(oldSelection); // 尝试删除旧选课
+        verify(selectionRepository).save(any()); // 尝试保存新选课（抛异常）
+    }
+
+    @Test
     @DisplayName("updateById: 首次分配专业应自动分配必修课")
     void updateById_FirstTimeMajorAssignment_ShouldAssignCourses() {
         Student existing = new Student();

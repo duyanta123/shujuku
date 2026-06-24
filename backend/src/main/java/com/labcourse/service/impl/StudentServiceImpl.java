@@ -110,6 +110,7 @@ public class StudentServiceImpl implements StudentService {
     }
 
     @Override
+    @Transactional
     public boolean updateById(Student student) {
         Optional<Student> existingOpt = studentRepository.findById(student.getId());
         if (existingOpt.isPresent()) {

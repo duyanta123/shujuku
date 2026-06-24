@@ -111,13 +111,12 @@ public class UserServiceImpl implements UserService {
             throw new RuntimeException("保存头像文件失败");
         }
 
-        // Delete old avatar file before updating DB
+        // Get old avatar URL before updating DB
         String oldAvatarUrl = getCurrentUserAvatar(userId, role);
-        deleteOldAvatar(oldAvatarUrl);
 
         String avatarUrl = AVATAR_URL_PREFIX + filename;
 
-        // Update entity avatarUrl
+        // Update entity avatarUrl (transactional)
         try {
             updateUserAvatar(userId, role, avatarUrl);
         } catch (Exception e) {
@@ -127,6 +126,10 @@ public class UserServiceImpl implements UserService {
             }
             throw new RuntimeException("更新头像信息失败");
         }
+
+        // Delete old avatar file AFTER successful DB update
+        // This prevents data loss if transaction rolls back
+        deleteOldAvatar(oldAvatarUrl);
 
         return avatarUrl;
     }
