@@ -84,6 +84,18 @@ public class AttendanceController {
 
         if (hasRole(authentication, "student")) {
             studentId = Long.valueOf(authentication.getPrincipal().toString());
+        } else if (hasRole(authentication, "teacher")) {
+            if (studentId == null) {
+                result.put("success", false);
+                result.put("message", "studentId is required");
+                return ResponseEntity.badRequest().body(result);
+            }
+            Long teacherId = Long.valueOf(authentication.getPrincipal().toString());
+            if (!isStudentInTeacherCourses(teacherId, studentId)) {
+                result.put("success", false);
+                result.put("message", "无权查看该学生的考勤记录");
+                return ResponseEntity.status(403).body(result);
+            }
         } else if (studentId == null) {
             result.put("success", false);
             result.put("message", "studentId is required");
@@ -317,5 +329,15 @@ public class AttendanceController {
                 .filter(authority -> authority != null)
                 .map(authority -> authority.startsWith("ROLE_") ? authority.substring(5) : authority)
                 .anyMatch(authority -> authority.equalsIgnoreCase(expected));
+    }
+
+    private boolean isStudentInTeacherCourses(Long teacherId, Long studentId) {
+        List<Course> teacherCourses = courseRepository.findByTeacherId(teacherId);
+        for (Course course : teacherCourses) {
+            if (selectionRepository.findByStudentIdAndCourseId(studentId, course.getId()).isPresent()) {
+                return true;
+            }
+        }
+        return false;
     }
 }

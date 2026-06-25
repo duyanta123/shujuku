@@ -197,6 +197,7 @@ public class UserServiceImpl implements UserService {
                 if (student == null) yield false;
                 if (!passwordEncoder.matches(oldPassword, student.getPassword())) yield false;
                 student.setPassword(passwordEncoder.encode(newPassword));
+                student.setRefreshToken(null);
                 studentRepository.save(student);
                 yield true;
             }
@@ -205,7 +206,17 @@ public class UserServiceImpl implements UserService {
                 if (teacher == null) yield false;
                 if (!passwordEncoder.matches(oldPassword, teacher.getPassword())) yield false;
                 teacher.setPassword(passwordEncoder.encode(newPassword));
+                teacher.setRefreshToken(null);
                 teacherRepository.save(teacher);
+                yield true;
+            }
+            case "admin" -> {
+                Admin admin = adminRepository.findById(userId).orElse(null);
+                if (admin == null) yield false;
+                if (!passwordEncoder.matches(oldPassword, admin.getPassword())) yield false;
+                admin.setPassword(passwordEncoder.encode(newPassword));
+                admin.setRefreshToken(null);
+                adminRepository.save(admin);
                 yield true;
             }
             default -> false;

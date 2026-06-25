@@ -6,7 +6,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -21,6 +24,9 @@ public class LoginAttemptService {
 
     @Autowired
     private LoginAttemptRepository loginAttemptRepository;
+
+    @Autowired
+    private EntityManager entityManager;
 
     public LoginResult checkLoginAttempt(String key) {
         Optional<LoginAttempt> opt = loginAttemptRepository.findById(key);
@@ -45,14 +51,24 @@ public class LoginAttemptService {
         return LoginResult.ALLOWED;
     }
 
+    @Transactional
     public void recordFailedAttempt(String key) {
-        LoginAttempt attempt = loginAttemptRepository.findById(key).orElseGet(() -> {
-            LoginAttempt newAttempt = new LoginAttempt();
-            newAttempt.setAttemptKey(key);
-            newAttempt.setAttempts(0);
-            newAttempt.setFirstAttemptTime(LocalDateTime.now());
-            return newAttempt;
-        });
+        LoginAttempt attempt = entityManager.find(LoginAttempt.class, key, LockModeType.PESSIMISTIC_WRITE);
+        if (attempt == null) {
+            try {
+                attempt = new LoginAttempt();
+                attempt.setAttemptKey(key);
+                attempt.setAttempts(0);
+                attempt.setFirstAttemptTime(LocalDateTime.now());
+                entityManager.persist(attempt);
+                entityManager.flush();
+            } catch (Exception e) {
+                attempt = entityManager.find(LoginAttempt.class, key, LockModeType.PESSIMISTIC_WRITE);
+                if (attempt == null) {
+                    throw e;
+                }
+            }
+        }
 
         if (isWindowExpired(attempt)) {
             attempt.setAttempts(0);
