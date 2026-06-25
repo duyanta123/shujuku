@@ -60,7 +60,7 @@ public class AttendanceController {
             result.put("message", "仅学生可签到");
             return ResponseEntity.status(403).body(result);
         }
-        Long studentId = Long.valueOf(authentication.getPrincipal().toString());
+        Long studentId = (Long) authentication.getPrincipal();
 
         if (courseRepository.existsById(courseId)
                 && selectionRepository.findByStudentIdAndCourseId(studentId, courseId).isEmpty()) {
@@ -83,7 +83,7 @@ public class AttendanceController {
         Map<String, Object> result = new HashMap<>();
 
         if (hasRole(authentication, "student")) {
-            studentId = Long.valueOf(authentication.getPrincipal().toString());
+            studentId = (Long) authentication.getPrincipal();
         } else if (studentId == null) {
             result.put("success", false);
             result.put("message", "studentId is required");
@@ -158,7 +158,7 @@ public class AttendanceController {
             result.put("message", "仅教师可修改考勤");
             return ResponseEntity.status(403).body(result);
         }
-        Long teacherId = Long.valueOf(authentication.getPrincipal().toString());
+        Long teacherId = (Long) authentication.getPrincipal();
 
         String reason = data.get("reason") != null ? data.get("reason").toString() : "";
 
@@ -230,7 +230,7 @@ public class AttendanceController {
             result.put("message", "仅教师可操作课程考勤");
             return ResponseEntity.status(403).body(result);
         }
-        Long teacherId = Long.valueOf(authentication.getPrincipal().toString());
+        Long teacherId = (Long) authentication.getPrincipal();
         Course course = courseRepository.findById(courseId).orElse(null);
         if (course == null) {
             Map<String, Object> result = new HashMap<>();

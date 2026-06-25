@@ -50,13 +50,19 @@ public class JwtFilter extends OncePerRequestFilter {
             if (StringUtils.hasText(token) && jwtUtil.validateToken(token)) {
                 Long userId = jwtUtil.extractUserId(token);
                 String role = jwtUtil.extractRole(token);
-                if (userId == null || !isExistingUser(userId, role)) {
+                if (userId == null || role == null) {
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+
+                String actualRole = resolveActualRole(userId, role.toLowerCase());
+                if (actualRole == null) {
                     filterChain.doFilter(request, response);
                     return;
                 }
 
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        userId, null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role))
+                        userId, null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + actualRole))
                 );
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
@@ -67,15 +73,12 @@ public class JwtFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    private boolean isExistingUser(Long userId, String role) {
-        if (role == null) {
-            return false;
-        }
-        return switch (role.toLowerCase()) {
-            case "student" -> studentRepository.existsById(userId);
-            case "teacher" -> teacherRepository.existsById(userId);
-            case "admin" -> adminRepository.existsById(userId);
-            default -> false;
+    private String resolveActualRole(Long userId, String tokenRole) {
+        return switch (tokenRole) {
+            case "student" -> studentRepository.existsById(userId) ? "student" : null;
+            case "teacher" -> teacherRepository.existsById(userId) ? "teacher" : null;
+            case "admin" -> adminRepository.existsById(userId) ? "admin" : null;
+            default -> null;
         };
     }
 

@@ -72,7 +72,7 @@ public class SelectionController {
     @GetMapping("/studentList/{courseId}")
     public ResponseEntity<Map<String, Object>> studentList(@PathVariable Long courseId) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        Long teacherId = Long.valueOf(authentication.getPrincipal().toString());
+        Long teacherId = (Long) authentication.getPrincipal();
         Course course = courseRepository.findById(courseId).orElse(null);
         if (course == null || !course.getTeacherId().equals(teacherId)) {
             Map<String, Object> result = new HashMap<>();
