@@ -1,25 +1,28 @@
 <template>
-  <div class="page-container">
-    <div class="page-header">
-      <h2>我的课表</h2>
-      <div class="header-actions">
+  <div class="page-container schedule-page">
+    <div class="schedule-hero">
+      <div class="hero-actions">
         <div v-if="cacheAge" class="cache-status" :title="'缓存时间：' + cacheAge">
           <span class="cache-dot" :class="{ expired: cacheExpired }"></span>
-          <span class="cache-text">{{ cacheExpired ? '缓存已过期' : '已缓存' }}</span>
+          <span>{{ cacheExpired ? '缓存已过期' : '已缓存' }}</span>
         </div>
-        <div class="view-toggle">
+
+        <div class="view-toggle" role="tablist" aria-label="课表视图">
           <button
             v-for="mode in viewModes"
             :key="mode.value"
+            type="button"
             :class="['toggle-btn', { active: viewMode === mode.value }]"
+            :aria-selected="viewMode === mode.value"
             @click="viewMode = mode.value"
           >
             {{ mode.label }}
           </button>
         </div>
+
         <el-button size="small" :loading="loading" @click="refreshSchedule">
           <template #icon>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="M2 8a6 6 0 0 1 10.47-4M14 8a6 6 0 0 1-10.47 4M2 2v4h4M14 14v-4h-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </template>
@@ -28,164 +31,206 @@
       </div>
     </div>
 
-    <!-- 加载状态 -->
-    <div v-if="loading && scheduleCourses.length === 0" class="loading-state">
-      <div class="loading-spinner"></div>
-      <p>加载课表中...</p>
+    <div v-if="loading && scheduleCourses.length === 0" class="schedule-skeleton" aria-live="polite">
+      <div v-for="item in 4" :key="item" class="skeleton-card"></div>
     </div>
 
-    <!-- 空状态 -->
-    <div v-else-if="scheduleCourses.length === 0" class="empty-state">
-      <span class="empty-icon">📅</span>
+    <div v-else-if="scheduleCourses.length === 0" class="empty-state schedule-empty">
+      <span class="empty-visual" aria-hidden="true">
+        <svg viewBox="0 0 64 64" fill="none">
+          <rect x="12" y="14" width="40" height="38" rx="8" stroke="currentColor" stroke-width="3"/>
+          <path d="M22 10v10M42 10v10M13 26h38" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+          <path d="M22 36h8M36 36h6M22 44h20" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </span>
       <p>暂无课程安排</p>
-      <span class="empty-hint">去课程列表选课吧，选课后课表将自动更新</span>
+      <span class="empty-hint">完成选课后，这里会自动同步你的周课表。</span>
     </div>
 
-    <!-- 课表视图 -->
-    <div v-else class="schedule-wrapper">
-      <!-- 周视图 -->
-      <div v-if="viewMode === 'week'" class="schedule-week">
-        <div class="schedule-table">
-          <div class="schedule-header">
-            <div class="header-cell time-label">时间</div>
-            <div
-              v-for="day in visibleDays"
-              :key="day.index"
-              :class="['header-cell day-label', { today: day.isToday }]"
-            >
-              <span class="day-name">{{ day.name }}</span>
-              <span v-if="day.isToday" class="today-badge">今天</span>
-            </div>
-          </div>
-          <div class="schedule-body">
-            <div
-              v-for="period in periodConfig"
-              :key="period.label"
-              class="schedule-row"
-            >
-              <div class="time-cell">
-                <span class="period-label">{{ period.label }}</span>
-                <span class="period-time">{{ period.time }}</span>
-              </div>
-              <div
-                v-for="day in visibleDays"
-                :key="day.index"
-                :class="['course-cell', { 'has-course': getCellCourses(day.index, period.start).length > 0 }]"
-                @click="getCellCourses(day.index, period.start).length && openDetail(getCellCourses(day.index, period.start))"
-              >
-                <div
-                  v-for="course in getCellCourses(day.index, period.start)"
-                  :key="course.id"
-                  class="course-block"
-                  :style="{ backgroundColor: getCourseColor(course.course_name) }"
-                  @click.stop="openDetail([course])"
-                >
-                  <span class="block-name">{{ course.course_name }}</span>
-                  <span class="block-info">{{ course.teacher_name }}</span>
-                  <span class="block-info">{{ course.location }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+    <template v-else>
+      <div class="metric-grid">
+        <div class="metric-card">
+          <span class="metric-label">已选课程</span>
+          <strong>{{ scheduleCourses.length }}</strong>
+          <span class="metric-hint">门课程</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">本周课次</span>
+          <strong>{{ scheduledEntries.length }}</strong>
+          <span class="metric-hint">个时间段</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">今日安排</span>
+          <strong>{{ todayEntries.length }}</strong>
+          <span class="metric-hint">{{ todayName }}</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">实验室</span>
+          <strong>{{ labCount }}</strong>
+          <span class="metric-hint">个地点</span>
         </div>
       </div>
 
-      <!-- 日视图 -->
-      <div v-else class="schedule-day">
+      <div class="status-strip">
+        <div class="status-item">
+          <span class="status-dot done"></span>
+          <span>{{ todayStatusCounts.completed }} 已结束</span>
+        </div>
+        <div class="status-item">
+          <span class="status-dot active"></span>
+          <span>{{ todayStatusCounts.current }} 进行中</span>
+        </div>
+        <div class="status-item">
+          <span class="status-dot upcoming"></span>
+          <span>{{ todayStatusCounts.upcoming }} 待开始</span>
+        </div>
+      </div>
+
+      <section v-if="viewMode === 'day'" class="day-view" aria-label="日课表">
         <div class="day-selector">
           <button
             v-for="day in visibleDays"
             :key="day.index"
-            :class="['day-btn', { active: selectedDay === day.index }]"
+            type="button"
+            :class="['day-btn', { active: selectedDay === day.index, today: day.isToday }]"
             @click="selectedDay = day.index"
           >
-            {{ day.name }}
+            <span>{{ day.name }}</span>
+            <small>{{ day.isToday ? '今天' : getDayCourseCount(day.index) + ' 节' }}</small>
           </button>
         </div>
-        <div class="day-schedule">
-          <div
-            v-for="period in periodConfig"
-            :key="period.label"
-            class="day-row"
-          >
-            <div class="day-time">
-              <span class="period-label">{{ period.label }}</span>
-              <span class="period-time">{{ period.time }}</span>
+
+        <div class="day-board">
+          <div class="board-heading">
+            <div>
+              <h3>{{ selectedDayName }}安排</h3>
+              <p>{{ selectedDayEntries.length ? `共 ${selectedDayEntries.length} 个课程时间段` : '今天留给自习、实验准备或复盘。' }}</p>
             </div>
-            <div class="day-courses">
-              <div
-                v-for="course in getCellCourses(selectedDay, period.start)"
-                :key="course.id"
-                class="day-course-card"
-                :style="{ borderLeftColor: getCourseColor(course.course_name) }"
-                @click="openDetail([course])"
-              >
-                <div class="day-course-header">
-                  <h4>{{ course.course_name }}</h4>
-                  <span class="badge">{{ period.label }}</span>
-                </div>
-                <div class="day-course-body">
-                  <div class="info-row">
-                    <span class="info-label">教师</span>
-                    <span class="info-value">{{ course.teacher_name }}</span>
-                  </div>
-                  <div class="info-row">
-                    <span class="info-label">学院</span>
-                    <span class="info-value">{{ course.college || '-' }}</span>
-                  </div>
-                  <div class="info-row">
-                    <span class="info-label">地点</span>
-                    <span class="info-value">{{ course.location }}</span>
-                  </div>
-                  <div class="info-row">
-                    <span class="info-label">实验室</span>
-                    <span class="info-value">{{ course.lab_name }}</span>
-                  </div>
-                </div>
+          </div>
+
+          <div class="timeline">
+            <div v-for="period in periodConfig" :key="period.label" class="timeline-row">
+              <div class="timeline-time">
+                <strong>{{ period.label }}</strong>
+                <span>{{ period.time }}</span>
               </div>
-              <div v-if="getCellCourses(selectedDay, period.start).length === 0" class="day-empty">
-                无课程安排
+              <div class="timeline-content">
+                <button
+                  v-for="entry in getCellEntries(selectedDay, period.start)"
+                  :key="entry.entryId"
+                  type="button"
+                  class="session-card"
+                  :class="entry.status"
+                  :style="{ '--course-color': getCourseColor(entry.course.course_name) }"
+                  @click="openDetail(entry.course)"
+                >
+                  <span class="course-bar"></span>
+                  <span class="session-main">
+                    <span class="session-title">{{ entry.course.course_name }}</span>
+                    <span class="session-meta">
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                        <circle cx="12" cy="7" r="4" stroke="currentColor" stroke-width="1.7"/>
+                      </svg>
+                      {{ entry.course.teacher_name || '-' }}
+                    </span>
+                    <span class="session-meta">
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M4 21V7l8-4 8 4v14M9 21v-7h6v7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                      {{ entry.course.location || entry.course.lab_name || '-' }}
+                    </span>
+                  </span>
+                  <span class="session-badge">{{ getStatusLabel(entry.status) }}</span>
+                </button>
+
+                <div v-if="getCellEntries(selectedDay, period.start).length === 0" class="slot-empty">
+                  无课程安排
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </section>
 
-    <!-- 课程详情弹窗 -->
-    <el-dialog v-model="detailVisible" title="课程详情" width="480px" :close-on-click-modal="false">
+      <section v-else class="week-view" aria-label="周课表">
+        <div class="week-table">
+          <div class="week-header">
+            <div class="week-head-cell time-head">时间</div>
+            <div
+              v-for="day in visibleDays"
+              :key="day.index"
+              :class="['week-head-cell', { today: day.isToday }]"
+            >
+              <span>{{ day.name }}</span>
+              <small>{{ day.isToday ? '今天' : getDayCourseCount(day.index) + ' 节' }}</small>
+            </div>
+          </div>
+
+          <div class="week-body">
+            <div v-for="period in periodConfig" :key="period.label" class="week-row">
+              <div class="week-time">
+                <strong>{{ period.label }}</strong>
+                <span>{{ period.time }}</span>
+              </div>
+              <div
+                v-for="day in visibleDays"
+                :key="`${day.index}-${period.start}`"
+                :class="['week-cell', { today: day.isToday, filled: getCellEntries(day.index, period.start).length > 0 }]"
+              >
+                <button
+                  v-for="entry in getCellEntries(day.index, period.start)"
+                  :key="entry.entryId"
+                  type="button"
+                  class="week-course"
+                  :class="entry.status"
+                  :style="{ '--course-color': getCourseColor(entry.course.course_name) }"
+                  @click="openDetail(entry.course)"
+                >
+                  <span class="week-course-title">{{ entry.course.course_name }}</span>
+                  <span class="week-course-line">{{ entry.course.teacher_name || '-' }}</span>
+                  <span class="week-course-line">{{ entry.course.location || entry.course.lab_name || '-' }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </template>
+
+    <el-dialog v-model="detailVisible" title="课程详情" width="520px" :close-on-click-modal="false">
       <template v-if="detailCourse">
-        <div class="detail-section">
-          <h3 class="detail-name">{{ detailCourse.course_name }}</h3>
+        <div class="detail-header">
+          <span class="detail-color" :style="{ backgroundColor: getCourseColor(detailCourse.course_name) }"></span>
+          <div>
+            <h3 class="detail-name">{{ detailCourse.course_name }}</h3>
+            <p>{{ detailCourse.course_time || '暂未设置上课时间' }}</p>
+          </div>
         </div>
         <div class="detail-grid">
           <div class="detail-item">
             <span class="detail-label">授课教师</span>
-            <span class="detail-value">{{ detailCourse.teacher_name }}</span>
+            <span class="detail-value">{{ detailCourse.teacher_name || '-' }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">所属学院</span>
             <span class="detail-value">{{ detailCourse.college || '-' }}</span>
           </div>
           <div class="detail-item">
-            <span class="detail-label">上课时间</span>
-            <span class="detail-value">{{ detailCourse.course_time }}</span>
-          </div>
-          <div class="detail-item">
             <span class="detail-label">实验室</span>
-            <span class="detail-value">{{ detailCourse.lab_name }}</span>
+            <span class="detail-value">{{ detailCourse.lab_name || '-' }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">上课地点</span>
-            <span class="detail-value">{{ detailCourse.location }}</span>
+            <span class="detail-value">{{ detailCourse.location || '-' }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">课程容量</span>
-            <span class="detail-value">{{ detailCourse.selected_count }} / {{ detailCourse.max_count }}</span>
+            <span class="detail-value">{{ detailCourse.selected_count ?? '-' }} / {{ detailCourse.max_count ?? '-' }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">选课时间</span>
-            <span class="detail-value">{{ detailCourse.select_time }}</span>
+            <span class="detail-value">{{ detailCourse.select_time || '-' }}</span>
           </div>
         </div>
       </template>
@@ -197,23 +242,24 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getMyCourses } from '../../api/selection'
-import { PERIOD_CONFIG, DAY_NAMES } from '../../utils/scheduleParser'
+import { PERIOD_CONFIG, DAY_NAMES, parseCourseTime } from '../../utils/scheduleParser'
 import { getScheduleCache, setScheduleCache, getCacheAge } from '../../utils/scheduleCache'
 import { onScheduleUpdate } from '../../utils/scheduleEventBus'
 
 const loading = ref(false)
 const scheduleCourses = ref([])
 const viewMode = ref('week')
-const selectedDay = ref(1)
+const selectedDay = ref(new Date().getDay() || 7)
 const detailVisible = ref(false)
 const detailCourse = ref(null)
 const cacheAge = ref('')
 const cacheExpired = ref(false)
 let syncTimer = null
+let scheduleUnsub = null
 
 const viewModes = [
-  { label: '周', value: 'week' },
-  { label: '日', value: 'day' }
+  { label: '周视图', value: 'week' },
+  { label: '日视图', value: 'day' }
 ]
 
 const periodConfig = PERIOD_CONFIG
@@ -227,12 +273,59 @@ const visibleDays = computed(() => {
   }))
 })
 
+const todayIndex = computed(() => new Date().getDay() || 7)
+const todayName = computed(() => DAY_NAMES[todayIndex.value])
+const selectedDayName = computed(() => DAY_NAMES[selectedDay.value] || '当日')
+
 const courseColors = [
-  '#e8d5b7', '#c8d9e8', '#d4c9e0', '#c8e0d4', '#e0d0c0',
-  '#c0d4e0', '#d8d0c8', '#c8d0d8', '#e0d8c8', '#d0c8e0'
+  '#c88d2c',
+  '#2d5a7a',
+  '#2d6a4f',
+  '#8a5a2b',
+  '#7462a8',
+  '#b85c1a',
+  '#4f6f8f',
+  '#7a6240'
 ]
 
-function getCourseColor(courseName) {
+const scheduledEntries = computed(() => {
+  const entries = []
+
+  scheduleCourses.value.forEach((course) => {
+    parseCourseTime(course.course_time).forEach((slot, index) => {
+      const entryId = `${course.selection_id || course.id}-${slot.day}-${slot.startPeriod}-${index}`
+      entries.push({
+        entryId,
+        course,
+        slot,
+        status: getEntryStatus(slot)
+      })
+    })
+  })
+
+  return entries.sort((a, b) => a.slot.day - b.slot.day || a.slot.startPeriod - b.slot.startPeriod)
+})
+
+const todayEntries = computed(() => scheduledEntries.value.filter(entry => entry.slot.day === todayIndex.value))
+const selectedDayEntries = computed(() => scheduledEntries.value.filter(entry => entry.slot.day === selectedDay.value))
+
+const labCount = computed(() => {
+  const labs = new Set(
+    scheduleCourses.value
+      .map(course => course.lab_name || course.location)
+      .filter(Boolean)
+  )
+  return labs.size
+})
+
+const todayStatusCounts = computed(() => {
+  return todayEntries.value.reduce((counts, entry) => {
+    counts[entry.status] += 1
+    return counts
+  }, { completed: 0, current: 0, upcoming: 0 })
+})
+
+function getCourseColor(courseName = '') {
   let hash = 0
   for (let i = 0; i < courseName.length; i++) {
     hash = courseName.charCodeAt(i) + ((hash << 5) - hash)
@@ -240,26 +333,48 @@ function getCourseColor(courseName) {
   return courseColors[Math.abs(hash) % courseColors.length]
 }
 
-function getCellCourses(day, startPeriod) {
-  return scheduleCourses.value.filter(course => {
-    if (!course.course_time) return false
-    const slots = course.course_time.split(/[,，]/).map(s => s.trim())
-    return slots.some(slot => {
-      const dayMatch = slot.match(/(周[一二三四五六日]|星期[一二三四五六日])/)
-      const periodMatch = slot.match(/(\d+)-(\d+)节/)
-      if (!dayMatch || !periodMatch) return false
-      const dayMap = { '周一': 1, '周二': 2, '周三': 3, '周四': 4, '周五': 5, '周六': 6, '周日': 7,
-                        '星期一': 1, '星期二': 2, '星期三': 3, '星期四': 4, '星期五': 5, '星期六': 6, '星期日': 7 }
-      const d = dayMap[dayMatch[0]] || 0
-      const start = parseInt(periodMatch[1])
-      return d === day && start === startPeriod
-    })
-  })
+function getCellEntries(day, startPeriod) {
+  return scheduledEntries.value.filter(entry => entry.slot.day === day && entry.slot.startPeriod === startPeriod)
 }
 
-function openDetail(courses) {
-  if (courses.length === 0) return
-  detailCourse.value = courses[0]
+function getDayCourseCount(day) {
+  return scheduledEntries.value.filter(entry => entry.slot.day === day).length
+}
+
+function getStatusLabel(status) {
+  const labels = {
+    completed: '已结束',
+    current: '进行中',
+    upcoming: '待开始'
+  }
+  return labels[status] || '待开始'
+}
+
+function getEntryStatus(slot) {
+  if (slot.day !== todayIndex.value) return 'upcoming'
+
+  const period = PERIOD_CONFIG.find(item => item.start === slot.startPeriod)
+  if (!period?.time) return 'upcoming'
+
+  const [startText, endText] = period.time.split(' - ')
+  const now = new Date()
+  const currentMinutes = now.getHours() * 60 + now.getMinutes()
+  const startMinutes = toMinutes(startText)
+  const endMinutes = toMinutes(endText)
+
+  if (currentMinutes > endMinutes) return 'completed'
+  if (currentMinutes >= startMinutes && currentMinutes <= endMinutes) return 'current'
+  return 'upcoming'
+}
+
+function toMinutes(timeText) {
+  const [hours, minutes] = timeText.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+function openDetail(course) {
+  if (!course) return
+  detailCourse.value = course
   detailVisible.value = true
 }
 
@@ -308,7 +423,6 @@ function refreshSchedule() {
   loadSchedule(true)
 }
 
-// 选课后自动刷新：监听 localStorage 变化
 function onStorageChange(e) {
   if (e.key === 'schedule_bust') {
     loadSchedule(true)
@@ -317,374 +431,589 @@ function onStorageChange(e) {
 
 onMounted(() => {
   loadSchedule()
-  // 使用 BroadcastChannel 监听课表更新（同 Tab + 跨 Tab）
-  const unsub = onScheduleUpdate(() => loadSchedule(true))
-  // 跨 Tab 兼容：监听 localStorage 变化
+  scheduleUnsub = onScheduleUpdate(() => loadSchedule(true))
   window.addEventListener('storage', onStorageChange)
-  // 定期同步：每 5 分钟检查一次
   syncTimer = setInterval(() => {
     const cached = getScheduleCache()
     if (cached.isExpired) {
       loadSchedule(true)
     }
   }, 5 * 60 * 1000)
-  // 存储清理函数
-  window._scheduleUnsub = unsub
 })
 
 onUnmounted(() => {
   window.removeEventListener('storage', onStorageChange)
-  if (window._scheduleUnsub) {
-    window._scheduleUnsub()
-    delete window._scheduleUnsub
-  }
+  if (scheduleUnsub) scheduleUnsub()
   if (syncTimer) clearInterval(syncTimer)
 })
-
-
 </script>
 
 <style scoped>
-.header-actions {
+.schedule-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.schedule-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: var(--space-lg);
+  padding-bottom: var(--space-lg);
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.hero-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-sm);
   flex-wrap: wrap;
 }
 
 .cache-status {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.75rem;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
   color: var(--color-text-muted);
-  cursor: default;
+  background: #faf9f7;
+  font-size: 0.78rem;
 }
 
 .cache-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #67c23a;
+  background: var(--color-success);
 }
 
 .cache-dot.expired {
-  background: #e6a23c;
+  background: var(--color-warning);
 }
 
 .view-toggle {
-  display: flex;
-  background: var(--color-border-soft);
+  display: inline-flex;
+  min-height: 34px;
+  padding: 3px;
+  border: 1px solid var(--color-border-soft);
   border-radius: var(--radius-sm);
-  padding: 2px;
+  background: #faf9f7;
 }
 
 .toggle-btn {
-  padding: 4px 14px;
+  min-width: 72px;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: 5px;
   background: transparent;
   color: var(--color-text-muted);
   font-size: 0.82rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-out);
 }
 
 .toggle-btn.active {
-  background: var(--color-surface);
-  color: var(--color-text);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
   box-shadow: var(--shadow-sm);
 }
 
-/* --- Loading --- */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-2xl);
-  color: var(--color-text-muted);
+.schedule-skeleton {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-md);
 }
 
-.loading-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid var(--color-border-soft);
-  border-top-color: var(--color-accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+.skeleton-card {
+  height: 132px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, #f3f0eb 25%, #faf9f7 37%, #f3f0eb 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.2s ease-in-out infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+@keyframes shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+.schedule-empty {
+  min-height: 360px;
+}
+
+.empty-visual {
+  width: 64px;
+  height: 64px;
+  margin-bottom: var(--space-md);
+  color: var(--color-accent);
+  opacity: 0.75;
+}
+
+.empty-visual svg {
+  width: 100%;
+  height: 100%;
 }
 
 .empty-hint {
-  font-size: 0.85rem;
+  margin-top: 4px;
   color: var(--color-text-muted);
-  opacity: 0.7;
+  font-size: 0.85rem;
 }
 
-/* --- Week View --- */
-.schedule-wrapper {
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.metric-card {
+  padding: var(--space-md);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+  background: #faf9f7;
+}
+
+.metric-label,
+.metric-hint {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+}
+
+.metric-card strong {
+  display: block;
+  margin: 4px 0;
+  color: var(--color-primary);
+  font-size: 1.55rem;
+  line-height: 1.1;
+}
+
+.status-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-soft);
+  font-size: 0.82rem;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-dot.done {
+  background: var(--color-success);
+}
+
+.status-dot.active {
+  background: var(--color-info);
+}
+
+.status-dot.upcoming {
+  background: var(--color-text-muted);
+}
+
+.day-view,
+.week-view {
+  animation: viewEnter var(--duration-normal) var(--ease-out);
+}
+
+@keyframes viewEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.day-selector {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(92px, 1fr));
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.day-btn {
+  min-height: 58px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.day-btn span,
+.day-btn small {
+  display: block;
+}
+
+.day-btn span {
+  font-weight: 700;
+}
+
+.day-btn small {
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+}
+
+.day-btn:hover {
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.day-btn.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  box-shadow: var(--shadow-md);
+}
+
+.day-btn.active small {
+  color: rgba(240, 236, 230, 0.72);
+}
+
+.day-btn.today:not(.active) {
+  border-color: rgba(200, 141, 44, 0.45);
+}
+
+.day-board,
+.week-table {
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.board-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border-bottom: 1px solid var(--color-border-soft);
+  background: #faf9f7;
+}
+
+.board-heading h3 {
+  margin-bottom: 4px;
+  font-size: 1.05rem;
+}
+
+.board-heading p {
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+}
+
+.timeline-row {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.timeline-row:last-child {
+  border-bottom: none;
+}
+
+.timeline-time {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: var(--space-md);
+  border-right: 1px solid var(--color-border-soft);
+  background: #faf9f7;
+}
+
+.timeline-time strong,
+.week-time strong {
+  color: var(--color-text);
+  font-size: 0.88rem;
+}
+
+.timeline-time span,
+.week-time span {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+}
+
+.timeline-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-height: 112px;
+  padding: var(--space-md);
+}
+
+.session-card {
+  display: grid;
+  grid-template-columns: 4px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-md);
+  width: 100%;
+  padding: var(--space-md);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.session-card:hover {
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.course-bar {
+  width: 4px;
+  height: 54px;
+  border-radius: 999px;
+  background: var(--course-color);
+}
+
+.session-main {
+  min-width: 0;
+}
+
+.session-title,
+.week-course-title {
+  display: block;
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  min-width: 0;
+  color: var(--color-text-soft);
+  font-size: 0.8rem;
+}
+
+.session-meta svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: var(--course-color);
+}
+
+.session-badge {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #f3f0eb;
+  color: var(--color-text-soft);
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.session-card.current .session-badge,
+.week-course.current {
+  background: rgba(45, 90, 122, 0.12);
+}
+
+.session-card.completed {
+  opacity: 0.72;
+}
+
+.slot-empty {
+  display: flex;
+  align-items: center;
+  min-height: 80px;
+  padding: 0 var(--space-md);
+  border: 1px dashed var(--color-border-soft);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+}
+
+.week-view {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-.schedule-table {
-  min-width: 700px;
-  border: 1px solid var(--color-border-soft);
-  border-radius: var(--radius-md);
-  overflow: hidden;
+.week-table {
+  min-width: 900px;
 }
 
-.schedule-header {
+.week-header,
+.week-row {
   display: grid;
-  grid-template-columns: 100px repeat(7, 1fr);
+  grid-template-columns: 112px repeat(7, minmax(104px, 1fr));
+}
+
+.week-header {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--color-text-inverse);
 }
 
-.header-cell {
-  padding: 12px 8px;
+.week-head-cell {
+  min-height: 64px;
+  padding: 12px 10px;
+  border-right: 1px solid rgba(240, 236, 230, 0.14);
   text-align: center;
-  font-size: 0.85rem;
-  font-weight: 600;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
 }
 
-.header-cell.time-label {
-  font-size: 0.78rem;
-  opacity: 0.7;
-}
-
-.day-label.today {
-  background: var(--color-accent);
-}
-
-.today-badge {
-  font-size: 0.65rem;
-  padding: 1px 6px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.25);
-  font-weight: 500;
-}
-
-.schedule-body {
-  background: var(--color-surface);
-}
-
-.schedule-row {
-  display: grid;
-  grid-template-columns: 100px repeat(7, 1fr);
-  border-bottom: 1px solid var(--color-border-soft);
-  min-height: 80px;
-}
-
-.schedule-row:last-child {
-  border-bottom: none;
-}
-
-.time-cell {
-  padding: 10px 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: #faf9f7;
-  border-right: 1px solid var(--color-border-soft);
-}
-
-.period-label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.period-time {
-  font-size: 0.68rem;
-  color: var(--color-text-muted);
-  margin-top: 2px;
-}
-
-.course-cell {
-  padding: 4px;
-  border-right: 1px solid var(--color-border-soft);
-  cursor: default;
-  transition: background var(--duration-fast) var(--ease-out);
-}
-
-.course-cell:last-child {
+.week-head-cell:last-child {
   border-right: none;
 }
 
-.course-cell.has-course {
-  cursor: pointer;
+.week-head-cell span,
+.week-head-cell small {
+  display: block;
 }
 
-.course-cell.has-course:hover {
-  background: rgba(200, 141, 44, 0.04);
+.week-head-cell span {
+  font-weight: 700;
 }
 
-.course-block {
-  padding: 6px 8px;
-  border-radius: 4px;
-  margin-bottom: 3px;
+.week-head-cell small {
+  margin-top: 2px;
+  color: rgba(240, 236, 230, 0.65);
+  font-size: 0.7rem;
+}
+
+.week-head-cell.today {
+  background: var(--color-accent);
+}
+
+.time-head {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
-  transition: transform var(--duration-fast) var(--ease-out);
+  align-items: center;
+  justify-content: center;
+  color: rgba(240, 236, 230, 0.78);
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
-.course-block:hover {
-  transform: scale(1.02);
-}
-
-.block-name {
-  font-size: 0.76rem;
-  font-weight: 600;
-  color: var(--color-text);
-  line-height: 1.3;
-}
-
-.block-info {
-  font-size: 0.68rem;
-  color: var(--color-text-soft);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* --- Day View --- */
-.day-selector {
-  display: flex;
-  gap: 4px;
-  margin-bottom: var(--space-md);
-  overflow-x: auto;
-  padding-bottom: 4px;
-}
-
-.day-btn {
-  padding: 6px 16px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--color-border-soft);
-  color: var(--color-text-soft);
-  font-size: 0.84rem;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all var(--duration-fast) var(--ease-out);
-}
-
-.day-btn.active {
-  background: var(--color-primary);
-  color: #fff;
-}
-
-.day-row {
-  display: flex;
+.week-row {
+  min-height: 104px;
   border-bottom: 1px solid var(--color-border-soft);
-  min-height: 80px;
 }
 
-.day-row:last-child {
+.week-row:last-child {
   border-bottom: none;
 }
 
-.day-time {
-  width: 100px;
-  padding: 12px 8px;
+.week-time {
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  background: #faf9f7;
+  gap: 4px;
+  padding: 10px;
   border-right: 1px solid var(--color-border-soft);
-  flex-shrink: 0;
+  background: #faf9f7;
+  text-align: center;
 }
 
-.day-courses {
-  flex: 1;
+.week-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
   padding: 8px;
-  min-height: 80px;
+  border-right: 1px solid var(--color-border-soft);
+  transition: background var(--duration-fast) var(--ease-out);
 }
 
-.day-course-card {
-  padding: 14px 16px;
-  border-left: 3px solid var(--color-accent);
-  background: var(--color-surface);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  margin-bottom: 8px;
+.week-cell:last-child {
+  border-right: none;
+}
+
+.week-cell.today {
+  background: rgba(200, 141, 44, 0.04);
+}
+
+.week-cell.filled:hover {
+  background: rgba(45, 63, 102, 0.04);
+}
+
+.week-course {
+  width: 100%;
+  min-height: 72px;
+  padding: 8px 9px;
+  border: 1px solid rgba(26, 29, 40, 0.06);
+  border-left: 4px solid var(--course-color);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--course-color) 13%, white);
+  text-align: left;
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-out);
+}
+
+.week-course:hover {
   box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
 }
 
-.day-course-card:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateX(2px);
+.week-course-title {
+  font-size: 0.78rem;
 }
 
-.day-course-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.day-course-header h4 {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.badge {
-  font-size: 0.7rem;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: var(--color-border-soft);
-  color: var(--color-text-muted);
-  font-weight: 500;
-}
-
-.day-course-body .info-row {
-  display: flex;
-  padding: 2px 0;
-  font-size: 0.82rem;
-}
-
-.day-course-body .info-label {
-  width: 52px;
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-}
-
-.day-course-body .info-value {
+.week-course-line {
+  display: block;
+  overflow: hidden;
+  margin-top: 3px;
   color: var(--color-text-soft);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.day-empty {
-  padding: 24px;
-  text-align: center;
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
 }
 
-/* --- Detail Dialog --- */
-.detail-section {
-  margin-bottom: var(--space-md);
+.detail-color {
+  width: 6px;
+  height: 52px;
+  border-radius: 999px;
+  flex: 0 0 auto;
 }
 
 .detail-name {
+  margin-bottom: 4px;
   font-size: 1.15rem;
-  font-weight: 700;
-  color: var(--color-text);
+}
+
+.detail-header p {
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
 }
 
 .detail-grid {
@@ -696,68 +1025,72 @@ onUnmounted(() => {
 .detail-item {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  padding: 12px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: #faf9f7;
 }
 
 .detail-label {
-  font-size: 0.78rem;
   color: var(--color-text-muted);
-  letter-spacing: 0.02em;
+  font-size: 0.76rem;
 }
 
 .detail-value {
-  font-size: 0.9rem;
   color: var(--color-text);
-  font-weight: 500;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
-/* --- Responsive --- */
-@media (max-width: 768px) {
-  .schedule-table {
-    min-width: 600px;
-  }
-
-  .schedule-header {
-    grid-template-columns: 70px repeat(7, 1fr);
-  }
-
-  .schedule-row {
-    grid-template-columns: 70px repeat(7, 1fr);
-    min-height: 64px;
-  }
-
-  .header-cell {
-    padding: 8px 4px;
-    font-size: 0.72rem;
-  }
-
-  .time-cell {
-    padding: 6px 4px;
-  }
-
-  .period-label {
-    font-size: 0.72rem;
-  }
-
-  .period-time {
-    font-size: 0.62rem;
-  }
-
-  .block-name {
-    font-size: 0.7rem;
-  }
-
-  .block-info {
-    font-size: 0.62rem;
-  }
-
-  .day-time {
-    width: 70px;
-  }
-
-  .header-actions {
-    width: 100%;
+@media (max-width: 1024px) {
+  .hero-actions {
     justify-content: flex-start;
+    width: 100%;
+  }
+
+  .metric-grid,
+  .schedule-skeleton {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .schedule-page {
+    gap: var(--space-md);
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-sm);
+  }
+
+  .metric-card {
+    padding: 12px;
+  }
+
+  .day-selector {
+    grid-template-columns: repeat(7, minmax(76px, 1fr));
+  }
+
+  .timeline-row {
+    grid-template-columns: 84px minmax(0, 1fr);
+  }
+
+  .timeline-time,
+  .timeline-content,
+  .board-heading {
+    padding: var(--space-sm);
+  }
+
+  .session-card {
+    grid-template-columns: 4px minmax(0, 1fr);
+    gap: var(--space-sm);
+  }
+
+  .session-badge {
+    grid-column: 2;
+    justify-self: flex-start;
   }
 
   .detail-grid {
@@ -766,31 +1099,46 @@ onUnmounted(() => {
 }
 
 @media (max-width: 520px) {
-  .schedule-table {
-    min-width: 520px;
+  .hero-actions,
+  .status-strip {
+    align-items: stretch;
+    flex-direction: column;
   }
 
-  .schedule-header {
-    grid-template-columns: 56px repeat(7, 1fr);
+  .view-toggle,
+  .hero-actions .el-button {
+    width: 100%;
   }
 
-  .schedule-row {
-    grid-template-columns: 56px repeat(7, 1fr);
-    min-height: 56px;
+  .toggle-btn {
+    flex: 1;
+    min-height: 34px;
   }
 
-  .header-cell {
-    padding: 6px 2px;
-    font-size: 0.65rem;
+  .metric-grid,
+  .schedule-skeleton {
+    grid-template-columns: 1fr;
   }
 
-  .day-time {
-    width: 56px;
+  .timeline-row {
+    grid-template-columns: 1fr;
   }
 
-  .day-btn {
-    padding: 5px 10px;
-    font-size: 0.76rem;
+  .timeline-time {
+    border-right: none;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .day-view,
+  .week-view,
+  .skeleton-card,
+  .session-card,
+  .week-course,
+  .toggle-btn {
+    animation: none;
+    transition: none;
   }
 }
 </style>
