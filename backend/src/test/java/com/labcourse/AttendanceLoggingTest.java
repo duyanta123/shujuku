@@ -5,6 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.labcourse.entity.Course;
 import com.labcourse.entity.Selection;
 import com.labcourse.repository.AttendanceRepository;
 import com.labcourse.repository.CourseRepository;
@@ -21,6 +22,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -67,6 +69,7 @@ class AttendanceLoggingTest {
     private String studentToken;
     private ListAppender<ILoggingEvent> logAppender;
     private Logger serviceLogger;
+    private String originalActiveCourseTime;
 
     private static final Long STUDENT_ID = 1L;   // S001
     private static final Long BAD_STUDENT = 99999L;
@@ -76,6 +79,10 @@ class AttendanceLoggingTest {
     private static final Map<Integer, Long> DAY_TO_COURSE = Map.of(
             1, 1L, 2, 2L, 3, 3L, 4, 4L, 5, 5L
     );
+    private static final String[] DAY_NAMES = {
+            "\u5468\u4e00", "\u5468\u4e8c", "\u5468\u4e09", "\u5468\u56db",
+            "\u5468\u4e94", "\u5468\u516d", "\u5468\u65e5"
+    };
     private Long activeCourseId;
     private String activeCourseName;
     private boolean isWeekend;
@@ -140,6 +147,14 @@ class AttendanceLoggingTest {
 
     @AfterEach
     void tearDown() {
+        if (originalActiveCourseTime != null && activeCourseId != null) {
+            courseRepository.findById(activeCourseId).ifPresent(course -> {
+                course.setCourseTime(originalActiveCourseTime);
+                courseRepository.saveAndFlush(course);
+            });
+            originalActiveCourseTime = null;
+        }
+
         if (logAppender != null && serviceLogger != null) {
             serviceLogger.detachAppender(logAppender);
             logAppender.stop();
@@ -244,8 +259,14 @@ class AttendanceLoggingTest {
     @DisplayName("场景2 - 迟到签到：验证超出规定时间签到时的日志准确性")
     void scenario2_LateCheckIn() throws Exception {
         Assumptions.assumeFalse(isWeekend, "周末无课程安排");
-        Assumptions.assumeTrue(java.time.LocalTime.now().isAfter(java.time.LocalTime.of(8, 3)),
+        Assumptions.assumeTrue(LocalTime.now().isAfter(LocalTime.of(8, 3)),
                 "当前时间尚未超过第一节课迟到窗口，跳过迟到分支日志验证");
+
+        Course activeCourse = courseRepository.findById(activeCourseId).orElseThrow();
+        originalActiveCourseTime = activeCourse.getCourseTime();
+        activeCourse.setCourseTime(DAY_NAMES[todayDayOfWeek - 1] + " 1-2\u8282");
+        courseRepository.saveAndFlush(activeCourse);
+
         // 清理并确保无记录后再签
         attendanceRepository.findByStudentIdAndCourseIdAndAttendanceDate(
                         STUDENT_ID, activeCourseId, today)
