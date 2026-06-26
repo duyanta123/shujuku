@@ -391,49 +391,35 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     public List<Map<String, Object>> getCourseAttendance(Long courseId, LocalDate date) {
-        // 获取选课学生列表
-        List<com.labcourse.entity.Selection> selections = selectionRepository.findByCourseId(courseId);
-        List<Long> studentIds = selections.stream()
-                .map(com.labcourse.entity.Selection::getStudentId)
-                .collect(Collectors.toList());
-
-        // 获取当天的考勤记录
         List<Attendance> attendances = attendanceRepository.findByCourseIdAndAttendanceDate(courseId, date);
-        Map<Long, Attendance> attendanceMap = attendances.stream()
-                .collect(Collectors.toMap(Attendance::getStudentId, a -> a, (a, b) -> a));
-
-        // 获取学生信息
+        List<Long> studentIds = attendances.stream()
+                .map(Attendance::getStudentId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
         List<Student> students = studentRepository.findAllById(studentIds);
         Map<Long, Student> studentMap = students.stream()
                 .collect(Collectors.toMap(Student::getId, s -> s));
 
         List<Map<String, Object>> result = new ArrayList<>();
-        for (Long studentId : studentIds) {
+        for (Attendance att : attendances) {
             Map<String, Object> item = new HashMap<>();
-            Student student = studentMap.get(studentId);
+            Student student = studentMap.get(att.getStudentId());
             if (student == null) continue;
 
             item.put("studentId", student.getId());
             item.put("studentNo", student.getStudentNo());
             item.put("studentName", student.getName());
-            item.put("major", student.getMajorId());
+            Map<String, Object> orgInfo = getStudentOrgInfo(student.getId());
+            item.put("major", orgInfo.getOrDefault("major", student.getMajorId()));
+            item.put("college", orgInfo.getOrDefault("college", student.getCollegeId()));
 
-            Attendance att = attendanceMap.get(studentId);
-            if (att != null) {
-                item.put("attendanceId", att.getId());
-                item.put("status", att.getAttendanceStatus().name());
-                item.put("checkInTime", att.getCreatedAt() != null ? att.getCreatedAt().toString() : null);
-                item.put("modifyTime", att.getModifyTime() != null ? att.getModifyTime().toString() : null);
-                item.put("modifiedBy", att.getModifiedBy());
-                item.put("modifyReason", att.getModifyReason());
-            } else {
-                item.put("attendanceId", null);
-                item.put("status", AttendanceStatus.缺勤.name());
-                item.put("checkInTime", null);
-                item.put("modifyTime", null);
-                item.put("modifiedBy", null);
-                item.put("modifyReason", null);
-            }
+            item.put("attendanceId", att.getId());
+            item.put("status", att.getAttendanceStatus().name());
+            item.put("checkInTime", displayCheckInTime(att));
+            item.put("modifyTime", att.getModifyTime() != null ? att.getModifyTime().toString() : null);
+            item.put("modifiedBy", att.getModifiedBy());
+            item.put("modifyReason", att.getModifyReason());
 
             result.add(item);
         }
@@ -495,6 +481,50 @@ public class AttendanceServiceImpl implements AttendanceService {
     }
 
     @Override
+    @Transactional
+    public Map<String, Object> batchCreateAbsent(Long courseId, LocalDate date) {
+        Map<String, Object> result = new HashMap<>();
+        if (date == null) {
+            date = LocalDate.now();
+        }
+        if (!courseRepository.existsById(courseId)) {
+            result.put("success", false);
+            result.put("code", "COURSE_NOT_FOUND");
+            result.put("message", "课程不存在");
+            return result;
+        }
+
+        List<com.labcourse.entity.Selection> selections = selectionRepository.findByCourseId(courseId);
+        int created = 0;
+        int skipped = 0;
+        for (com.labcourse.entity.Selection selection : selections) {
+            Long studentId = selection.getStudentId();
+            if (attendanceRepository.existsByStudentIdAndCourseIdAndAttendanceDate(studentId, courseId, date)) {
+                skipped++;
+                continue;
+            }
+            Attendance attendance = new Attendance();
+            attendance.setStudentId(studentId);
+            attendance.setCourseId(courseId);
+            attendance.setAttendanceDate(date);
+            attendance.setAttendanceStatus(AttendanceStatus.缺勤);
+            try {
+                attendanceRepository.save(attendance);
+                created++;
+            } catch (DataIntegrityViolationException e) {
+                skipped++;
+            }
+        }
+
+        result.put("success", true);
+        result.put("message", "缺勤记录生成完成");
+        result.put("createdCount", created);
+        result.put("skippedCount", skipped);
+        result.put("totalSelected", selections.size());
+        return result;
+    }
+
+    @Override
     public List<LocalDate> getAttendanceDates(Long courseId) {
         List<Attendance> records = attendanceRepository.findByCourseIdOrderByAttendanceDateDesc(courseId);
         return records.stream()
@@ -523,11 +553,13 @@ public class AttendanceServiceImpl implements AttendanceService {
             Student student = studentMap.get(record.getStudentId());
             item.put("studentNo", student != null ? student.getStudentNo() : "");
             item.put("studentName", student != null ? student.getName() : "");
-            item.put("major", student != null ? student.getMajorId() : "");
+            Map<String, Object> orgInfo = student != null ? getStudentOrgInfo(student.getId()) : Map.of();
+            item.put("major", orgInfo.getOrDefault("major", student != null ? student.getMajorId() : ""));
+            item.put("college", orgInfo.getOrDefault("college", student != null ? student.getCollegeId() : ""));
             item.put("courseName", course != null ? course.getCourseName() : "");
             item.put("attendanceDate", record.getAttendanceDate() != null ? record.getAttendanceDate().toString() : "");
             item.put("status", record.getAttendanceStatus().name());
-            item.put("checkInTime", record.getCreatedAt() != null ? record.getCreatedAt().toString() : "");
+            item.put("checkInTime", displayCheckInTime(record) != null ? displayCheckInTime(record) : "");
             result.add(item);
         }
         return result;
@@ -542,5 +574,28 @@ public class AttendanceServiceImpl implements AttendanceService {
         result.put("time", now.toLocalTime().toString());
         result.put("dayOfWeek", now.getDayOfWeek().getValue());
         return result;
+    }
+
+    private String displayCheckInTime(Attendance attendance) {
+        if (attendance == null || attendance.getAttendanceStatus() == null) {
+            return null;
+        }
+        if (attendance.getAttendanceStatus() == AttendanceStatus.出勤
+                || attendance.getAttendanceStatus() == AttendanceStatus.迟到) {
+            return attendance.getCheckInTime() != null ? attendance.getCheckInTime().toString() : null;
+        }
+        return null;
+    }
+
+    private Map<String, Object> getStudentOrgInfo(Long studentId) {
+        String sql = """
+            SELECT m.name AS major, c.name AS college
+            FROM student s
+            LEFT JOIN major m ON s.major_id = m.id
+            LEFT JOIN college c ON s.college_id = c.id
+            WHERE s.id = ?
+            """;
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, studentId);
+        return rows.isEmpty() ? Map.of() : rows.get(0);
     }
 }

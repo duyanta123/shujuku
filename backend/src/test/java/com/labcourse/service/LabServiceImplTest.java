@@ -1,6 +1,7 @@
 package com.labcourse.service;
 
 import com.labcourse.entity.Lab;
+import com.labcourse.repository.CourseRepository;
 import com.labcourse.repository.LabRepository;
 import com.labcourse.service.impl.LabServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,12 +29,16 @@ class LabServiceImplTest {
 
     private LabServiceImpl service;
     private LabRepository labRepository;
+    private CourseRepository courseRepository;
 
     @BeforeEach
     void setUp() {
         service = new LabServiceImpl();
         labRepository = mock(LabRepository.class);
+        courseRepository = mock(CourseRepository.class);
         injectField(service, "labRepository", labRepository);
+        injectField(service, "courseRepository", courseRepository);
+        when(courseRepository.existsByLabId(anyLong())).thenReturn(false);
     }
 
     // ================================================================

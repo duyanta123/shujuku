@@ -1,8 +1,13 @@
 package com.labcourse.service;
 
+import com.labcourse.entity.College;
 import com.labcourse.entity.Course;
+import com.labcourse.entity.Teacher;
+import com.labcourse.exception.BusinessException;
+import com.labcourse.repository.CollegeRepository;
 import com.labcourse.repository.CourseRepository;
 import com.labcourse.repository.SelectionRepository;
+import com.labcourse.repository.TeacherRepository;
 import com.labcourse.service.impl.CourseServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +36,8 @@ class CourseServiceImplTest {
     private CourseServiceImpl service;
     private CourseRepository courseRepository;
     private SelectionRepository selectionRepository;
+    private TeacherRepository teacherRepository;
+    private CollegeRepository collegeRepository;
     private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
@@ -38,10 +45,14 @@ class CourseServiceImplTest {
         service = new CourseServiceImpl();
         courseRepository = mock(CourseRepository.class);
         selectionRepository = mock(SelectionRepository.class);
+        teacherRepository = mock(TeacherRepository.class);
+        collegeRepository = mock(CollegeRepository.class);
         jdbcTemplate = mock(JdbcTemplate.class);
 
         injectField(service, "courseRepository", courseRepository);
         injectField(service, "selectionRepository", selectionRepository);
+        injectField(service, "teacherRepository", teacherRepository);
+        injectField(service, "collegeRepository", collegeRepository);
         injectField(service, "jdbcTemplate", jdbcTemplate);
     }
 
@@ -64,8 +75,8 @@ class CourseServiceImplTest {
         when(courseRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(selectionRepository.existsByCourseId(1L)).thenReturn(true);  // 已有学生选课
 
-        boolean result = service.updateById(update);
-        assertFalse(result, "已有选课记录时不应允许修改课程类型");
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.updateById(update));
+        assertEquals("COURSE_HAS_SELECTIONS", ex.getCode());
         verify(courseRepository, never()).save(any());
     }
 
@@ -238,6 +249,7 @@ class CourseServiceImplTest {
         course.setCourseName("新课程");
         course.setCourseTime("周一 1-2节");
         course.setMaxCount(30);
+        validCourseRelations(course);
 
         boolean result = service.save(course);
         assertTrue(result);
@@ -267,6 +279,249 @@ class CourseServiceImplTest {
         assertEquals(0, empty.size());
     }
 
+    // ================================================================
+    // save — 课程容量校验 (新增安全审计逻辑)
+    // ================================================================
+
+    @Test
+    @DisplayName("save: maxCount=null 抛出 IllegalArgumentException")
+    void save_MaxCountNull_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(null);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.save(course));
+        assertEquals("课程容量范围为1-100", ex.getMessage());
+        verify(courseRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("save: maxCount=0 抛出 IllegalArgumentException")
+    void save_MaxCountZero_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(0);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.save(course));
+        assertEquals("课程容量范围为1-100", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("save: maxCount=101 抛出 IllegalArgumentException")
+    void save_MaxCountExceeds100_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(101);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.save(course));
+        assertEquals("课程容量范围为1-100", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("save: maxCount=1 边界值通过校验")
+    void save_MaxCountMinBoundary_ShouldSucceed() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(1);
+        validCourseRelations(course);
+
+        boolean result = service.save(course);
+        assertTrue(result);
+        verify(courseRepository).save(course);
+    }
+
+    @Test
+    @DisplayName("save: maxCount=100 边界值通过校验")
+    void save_MaxCountMaxBoundary_ShouldSucceed() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(100);
+        validCourseRelations(course);
+
+        boolean result = service.save(course);
+        assertTrue(result);
+        verify(courseRepository).save(course);
+    }
+
+    // ================================================================
+    // save — 课程时间格式校验 (新增安全审计逻辑)
+    // ================================================================
+
+    @Test
+    @DisplayName("save: courseTime=null 抛出 IllegalArgumentException")
+    void save_CourseTimeNull_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime(null);
+        course.setMaxCount(30);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.save(course));
+        assertEquals("课程时间格式无效", ex.getMessage());
+        verify(courseRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("save: courseTime 为空字符串抛出异常")
+    void save_CourseTimeEmpty_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("");
+        course.setMaxCount(30);
+
+        assertThrows(IllegalArgumentException.class, () -> service.save(course));
+    }
+
+    @Test
+    @DisplayName("save: courseTime 格式无效（无星期）抛出异常")
+    void save_CourseTimeNoDay_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("1-2节");
+        course.setMaxCount(30);
+
+        assertThrows(IllegalArgumentException.class, () -> service.save(course));
+    }
+
+    @Test
+    @DisplayName("save: courseTime 节次超出范围（11-12节）抛出异常")
+    void save_CourseTimePeriodOutOfRange_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 11-12节");
+        course.setMaxCount(30);
+
+        assertThrows(IllegalArgumentException.class, () -> service.save(course));
+    }
+
+    @Test
+    @DisplayName("save: courseTime 节次倒置（3-1节）抛出异常")
+    void save_CourseTimePeriodReversed_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 3-1节");
+        course.setMaxCount(30);
+
+        assertThrows(IllegalArgumentException.class, () -> service.save(course));
+    }
+
+    @Test
+    @DisplayName("save: courseTime 合法 — 周一到周日 完整星期名")
+    void save_CourseTimeValidWeekDays_ShouldSucceed() {
+        String[] validTimes = {
+                "周一 1-2节", "周二 3-4节", "周三 5-6节",
+                "周四 7-8节", "周五 9-10节", "周六 1-2节", "周日 1-2节",
+                "星期一 1-2节", "星期二 3-4节", "星期三 5-6节",
+                "星期四 7-8节", "星期五 9-10节", "星期六 1-2节", "星期日 1-2节",
+        };
+        for (String time : validTimes) {
+            Course course = new Course();
+            course.setCourseName("新课程");
+            course.setCourseTime(time);
+            course.setMaxCount(30);
+            validCourseRelations(course);
+            assertTrue(service.save(course), "应通过校验: " + time);
+        }
+    }
+
+    @Test
+    @DisplayName("save: courseTime 多时间段逗号分隔")
+    void save_CourseTimeMultiplePeriods_ShouldSucceed() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节,周三 3-4节");
+        course.setMaxCount(30);
+        validCourseRelations(course);
+
+        boolean result = service.save(course);
+        assertTrue(result);
+        verify(courseRepository).save(course);
+    }
+
+    @Test
+    @DisplayName("save: courseTime 多时间段中文逗号分隔")
+    void save_CourseTimeMultiplePeriodsChineseComma_ShouldSucceed() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节，周三 3-4节");
+        course.setMaxCount(30);
+        validCourseRelations(course);
+
+        boolean result = service.save(course);
+        assertTrue(result);
+        verify(courseRepository).save(course);
+    }
+
+    // ================================================================
+    // updateById — 更新时字段校验 (新增安全审计逻辑)
+    // ================================================================
+
+    @Test
+    @DisplayName("updateById: 更新 maxCount 为非法值应抛出异常")
+    void updateById_InvalidMaxCount_ShouldThrow() {
+        Course existing = new Course();
+        existing.setId(1L);
+        existing.setCourseName("Python编程");
+        existing.setCourseType("ELECTIVE");
+
+        Course update = new Course();
+        update.setId(1L);
+        update.setMaxCount(200);
+
+        when(courseRepository.findById(1L)).thenReturn(Optional.of(existing));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.updateById(update));
+        assertEquals("课程容量范围为1-100", ex.getMessage());
+        verify(courseRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("updateById: 更新 courseTime 为非法值应抛出异常")
+    void updateById_InvalidCourseTime_ShouldThrow() {
+        Course existing = new Course();
+        existing.setId(1L);
+        existing.setCourseName("Python编程");
+        existing.setCourseType("ELECTIVE");
+
+        Course update = new Course();
+        update.setId(1L);
+        update.setCourseTime("无效时间");
+
+        when(courseRepository.findById(1L)).thenReturn(Optional.of(existing));
+
+        assertThrows(IllegalArgumentException.class, () -> service.updateById(update));
+        verify(courseRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("updateById: 仅更新合法 maxCount 应成功")
+    void updateById_ValidMaxCount_ShouldSucceed() {
+        Course existing = new Course();
+        existing.setId(1L);
+        existing.setCourseName("Python编程");
+        existing.setCourseType("ELECTIVE");
+
+        Course update = new Course();
+        update.setId(1L);
+        update.setMaxCount(50);
+
+        when(courseRepository.findById(1L)).thenReturn(Optional.of(existing));
+
+        boolean result = service.updateById(update);
+        assertTrue(result);
+        assertEquals(50, existing.getMaxCount());
+        verify(courseRepository).save(existing);
+    }
+
     // ===== 工具方法 =====
 
     private static void injectField(Object target, String fieldName, Object value) {
@@ -277,5 +532,21 @@ class CourseServiceImplTest {
         } catch (Exception e) {
             fail("无法注入 " + fieldName + ": " + e.getMessage());
         }
+    }
+
+    private void validCourseRelations(Course course) {
+        course.setTeacherId(10L);
+        course.setCollegeId(1L);
+
+        Teacher teacher = new Teacher();
+        teacher.setId(10L);
+        teacher.setCollegeId(1L);
+
+        College college = new College();
+        college.setId(1L);
+        college.setStatus("ACTIVE");
+
+        when(teacherRepository.findById(10L)).thenReturn(Optional.of(teacher));
+        when(collegeRepository.findById(1L)).thenReturn(Optional.of(college));
     }
 }

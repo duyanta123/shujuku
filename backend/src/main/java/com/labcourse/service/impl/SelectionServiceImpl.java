@@ -147,12 +147,16 @@ public class SelectionServiceImpl implements SelectionService {
                 t.name AS teacher_name,
                 l.lab_name,
                 l.location,
+                col.name AS college,
+                c.college_id,
+                c.course_type,
                 c.course_time,
                 sel.select_time
             FROM selection sel
             JOIN course c ON sel.course_id = c.id
             JOIN teacher t ON c.teacher_id = t.id
             LEFT JOIN lab l ON c.lab_id = l.id
+            LEFT JOIN college col ON c.college_id = col.id
             WHERE sel.student_id = ?
             ORDER BY sel.select_time DESC
             """;
@@ -167,9 +171,13 @@ public class SelectionServiceImpl implements SelectionService {
                 s.student_no,
                 s.name,
                 s.gender,
+                m.name AS major,
+                c.name AS college,
                 sel.select_time
             FROM selection sel
             JOIN student s ON sel.student_id = s.id
+            LEFT JOIN major m ON s.major_id = m.id
+            LEFT JOIN college c ON s.college_id = c.id
             WHERE sel.course_id = ?
             ORDER BY s.student_no
             """;

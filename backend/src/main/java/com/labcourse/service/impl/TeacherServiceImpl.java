@@ -3,6 +3,7 @@ package com.labcourse.service.impl;
 import com.labcourse.entity.College;
 import com.labcourse.entity.Teacher;
 import com.labcourse.exception.AccountLockedException;
+import com.labcourse.exception.BusinessException;
 import com.labcourse.repository.CollegeRepository;
 import com.labcourse.repository.CourseRepository;
 import com.labcourse.repository.TeacherRepository;
@@ -11,6 +12,7 @@ import com.labcourse.service.TeacherService;
 import com.labcourse.util.PasswordPolicy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -69,6 +71,7 @@ public class TeacherServiceImpl implements TeacherService {
 
     @Override
     public boolean save(Teacher teacher) {
+        validateCollege(teacher.getCollegeId());
         PasswordPolicy.requireValid(teacher.getPassword());
         teacher.setPassword(passwordEncoder.encode(teacher.getPassword()));
         teacherRepository.save(teacher);
@@ -80,6 +83,10 @@ public class TeacherServiceImpl implements TeacherService {
         Optional<Teacher> existingOpt = teacherRepository.findById(teacher.getId());
         if (existingOpt.isPresent()) {
             Teacher existing = existingOpt.get();
+            boolean collegeChanged = teacher.getCollegeId() != null && !teacher.getCollegeId().equals(existing.getCollegeId());
+            if (collegeChanged) {
+                validateCollege(teacher.getCollegeId());
+            }
             if (teacher.getTeacherNo() != null && !teacher.getTeacherNo().isEmpty()) {
                 existing.setTeacherNo(teacher.getTeacherNo());
             }
@@ -140,6 +147,17 @@ public class TeacherServiceImpl implements TeacherService {
             return true;
         }
         return false;
+    }
+
+    private void validateCollege(Long collegeId) {
+        if (collegeId == null) {
+            throw new BusinessException("INVALID_RELATION", "学院不能为空", HttpStatus.BAD_REQUEST);
+        }
+        College college = collegeRepository.findById(collegeId)
+                .orElseThrow(() -> new BusinessException("COLLEGE_NOT_FOUND", "学院不存在", HttpStatus.BAD_REQUEST));
+        if (!"ACTIVE".equals(college.getStatus())) {
+            throw new BusinessException("INVALID_RELATION", "学院已停用", HttpStatus.BAD_REQUEST);
+        }
     }
 
 }

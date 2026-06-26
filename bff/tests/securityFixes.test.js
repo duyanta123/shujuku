@@ -74,6 +74,34 @@ describe('security fixes', () => {
     })
   })
 
+  it('fetchWithTimeout returns response on successful request', async () => {
+    const { fetchWithTimeout } = await import('../src/utils/fetchWithTimeout.js')
+    const expectedResponse = { status: 200, json: async () => ({ ok: true }) }
+    globalThis.fetch = vi.fn().mockResolvedValue(expectedResponse)
+
+    const response = await fetchWithTimeout('http://localhost:1/ok', {}, 100)
+    expect(response).toBe(expectedResponse)
+  })
+
+  it('fetchWithTimeout passes options to fetch', async () => {
+    const { fetchWithTimeout } = await import('../src/utils/fetchWithTimeout.js')
+    const fetchSpy = vi.fn().mockResolvedValue({ status: 200 })
+    globalThis.fetch = fetchSpy
+
+    await fetchWithTimeout('http://localhost:1/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'value' }),
+    }, 100)
+
+    expect(fetchSpy).toHaveBeenCalledWith('http://localhost:1/test', expect.objectContaining({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'value' }),
+      signal: expect.any(AbortSignal),
+    }))
+  })
+
   it('config rejects weak JWT secrets outside test mode', async () => {
     const originalNodeEnv = process.env.NODE_ENV
     const originalJwtSecret = process.env.JWT_SECRET

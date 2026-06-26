@@ -2,6 +2,11 @@ package com.labcourse.service;
 
 import com.labcourse.entity.College;
 import com.labcourse.repository.CollegeRepository;
+import com.labcourse.repository.CourseRepository;
+import com.labcourse.repository.LabRepository;
+import com.labcourse.repository.MajorRepository;
+import com.labcourse.repository.StudentRepository;
+import com.labcourse.repository.TeacherRepository;
 import com.labcourse.service.impl.CollegeServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,13 +36,34 @@ class CollegeServiceImplTest {
 
     private CollegeServiceImpl service;
     private CollegeRepository collegeRepository;
+    private MajorRepository majorRepository;
+    private StudentRepository studentRepository;
+    private TeacherRepository teacherRepository;
+    private LabRepository labRepository;
+    private CourseRepository courseRepository;
 
     @BeforeEach
     void setUp() {
         service = new CollegeServiceImpl();
         collegeRepository = mock(CollegeRepository.class);
+        majorRepository = mock(MajorRepository.class);
+        studentRepository = mock(StudentRepository.class);
+        teacherRepository = mock(TeacherRepository.class);
+        labRepository = mock(LabRepository.class);
+        courseRepository = mock(CourseRepository.class);
 
         injectField(service, "collegeRepository", collegeRepository);
+        injectField(service, "majorRepository", majorRepository);
+        injectField(service, "studentRepository", studentRepository);
+        injectField(service, "teacherRepository", teacherRepository);
+        injectField(service, "labRepository", labRepository);
+        injectField(service, "courseRepository", courseRepository);
+
+        when(majorRepository.countByCollegeId(anyLong())).thenReturn(0L);
+        when(studentRepository.countByCollegeId(anyLong())).thenReturn(0L);
+        when(teacherRepository.countByCollegeId(anyLong())).thenReturn(0L);
+        when(labRepository.countByCollegeId(anyLong())).thenReturn(0L);
+        when(courseRepository.countByCollegeId(anyLong())).thenReturn(0L);
     }
 
     // ================================================================

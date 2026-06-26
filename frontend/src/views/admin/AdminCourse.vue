@@ -190,7 +190,7 @@ const handleAdd = () => {
 const handleEdit = (row) => {
   dialogTitle.value = '编辑课程'
   courseForm.value = { ...row }
-  courseTypeDisabled.value = false
+  courseTypeDisabled.value = Number(row.selected_count || row.selectedCount || 0) > 0
   courseFormRef.value?.resetFields()
   dialogVisible.value = true
 }
@@ -223,14 +223,14 @@ const handleSave = async () => {
     } else {
       ElMessage.error(result.message)
     }
-  } catch (error) { ElMessage.error('保存失败') }
+  } catch (error) { ElMessage.error(error.response?.data?.message || '保存失败') }
   finally { submitting.value = false }
 }
 
 const handleDelete = async (id) => {
   try {
     await ElMessageBox.confirm(
-      '确定要删除该课程吗？删除后将同时清除该课程的所有选课记录、成绩和考勤数据。',
+      '确定要删除该课程吗？已有选课记录的课程无法删除。',
       '提示',
       { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
     )

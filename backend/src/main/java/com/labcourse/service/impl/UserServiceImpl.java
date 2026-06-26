@@ -4,6 +4,7 @@ import com.labcourse.entity.Admin;
 import com.labcourse.entity.Student;
 import com.labcourse.entity.Teacher;
 import com.labcourse.repository.AdminRepository;
+import com.labcourse.repository.CollegeRepository;
 import com.labcourse.repository.StudentRepository;
 import com.labcourse.repository.TeacherRepository;
 import com.labcourse.service.UserService;
@@ -46,6 +47,9 @@ public class UserServiceImpl implements UserService {
 
     @Autowired
     private AdminRepository adminRepository;
+
+    @Autowired
+    private CollegeRepository collegeRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -156,6 +160,9 @@ public class UserServiceImpl implements UserService {
                 profile.put("account", student.getStudentNo());
                 profile.put("avatarUrl", student.getAvatarUrl());
                 profile.put("collegeId", student.getCollegeId());
+                String collegeName = getCollegeName(student.getCollegeId());
+                profile.put("college", collegeName);
+                profile.put("collegeName", collegeName);
             }
             case "teacher" -> {
                 Teacher teacher = teacherRepository.findById(userId)
@@ -164,6 +171,9 @@ public class UserServiceImpl implements UserService {
                 profile.put("account", teacher.getTeacherNo());
                 profile.put("avatarUrl", teacher.getAvatarUrl());
                 profile.put("collegeId", teacher.getCollegeId());
+                String collegeName = getCollegeName(teacher.getCollegeId());
+                profile.put("college", collegeName);
+                profile.put("collegeName", collegeName);
                 profile.put("title", teacher.getTitle());
             }
             case "admin" -> {
@@ -208,8 +218,25 @@ public class UserServiceImpl implements UserService {
                 teacherRepository.save(teacher);
                 yield true;
             }
+            case "admin" -> {
+                Admin admin = adminRepository.findById(userId).orElse(null);
+                if (admin == null) yield false;
+                if (!passwordEncoder.matches(oldPassword, admin.getPassword())) yield false;
+                admin.setPassword(passwordEncoder.encode(newPassword));
+                adminRepository.save(admin);
+                yield true;
+            }
             default -> false;
         };
+    }
+
+    private String getCollegeName(Long collegeId) {
+        if (collegeId == null) {
+            return "";
+        }
+        return collegeRepository.findById(collegeId)
+                .map(college -> college.getName())
+                .orElse("");
     }
 
     private String extractToken() {

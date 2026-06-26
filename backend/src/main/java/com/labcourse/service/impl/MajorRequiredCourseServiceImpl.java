@@ -44,6 +44,7 @@ public class MajorRequiredCourseServiceImpl implements MajorRequiredCourseServic
         Course course = courseRepository.findById(courseId).orElse(null);
         if (course == null) {
             result.put("success", false);
+            result.put("code", "COURSE_NOT_FOUND");
             result.put("message", "课程不存在");
             return result;
         }
@@ -51,6 +52,7 @@ public class MajorRequiredCourseServiceImpl implements MajorRequiredCourseServic
         // Validate course type is REQUIRED
         if (!"REQUIRED".equals(course.getCourseType())) {
             result.put("success", false);
+            result.put("code", "INVALID_COURSE_TYPE");
             result.put("message", "仅可绑定必修课类型的课程");
             return result;
         }
@@ -59,12 +61,14 @@ public class MajorRequiredCourseServiceImpl implements MajorRequiredCourseServic
         Major major = majorRepository.findById(majorId).orElse(null);
         if (major == null) {
             result.put("success", false);
+            result.put("code", "MAJOR_NOT_FOUND");
             result.put("message", "专业不存在");
             return result;
         }
 
         if (course.getCollegeId() == null || !course.getCollegeId().equals(major.getCollegeId())) {
             result.put("success", false);
+            result.put("code", "INVALID_RELATION");
             result.put("message", "不可跨学院绑定必修课，课程和专业必须属于同一学院");
             return result;
         }
@@ -72,6 +76,7 @@ public class MajorRequiredCourseServiceImpl implements MajorRequiredCourseServic
         // Check duplicate
         if (majorRequiredCourseRepository.findByMajorIdAndCourseId(majorId, courseId).isPresent()) {
             result.put("success", false);
+            result.put("code", "REQUIRED_COURSE_BINDING_EXISTS");
             result.put("message", "该专业已绑定此必修课");
             return result;
         }
@@ -103,10 +108,14 @@ public class MajorRequiredCourseServiceImpl implements MajorRequiredCourseServic
                 c.course_name,
                 c.course_time,
                 c.max_count,
+                c.college_id,
+                col.name AS college,
+                c.course_type,
                 t.name AS teacher_name
             FROM major_required_course mrc
             JOIN course c ON mrc.course_id = c.id
             LEFT JOIN teacher t ON c.teacher_id = t.id
+            LEFT JOIN college col ON c.college_id = col.id
             WHERE mrc.major_id = ?
             ORDER BY mrc.id
             """;

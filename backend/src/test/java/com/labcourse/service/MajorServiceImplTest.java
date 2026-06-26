@@ -1,6 +1,9 @@
 package com.labcourse.service;
 
+import com.labcourse.entity.College;
 import com.labcourse.entity.Major;
+import com.labcourse.repository.CollegeRepository;
+import com.labcourse.repository.MajorRequiredCourseRepository;
 import com.labcourse.repository.MajorRepository;
 import com.labcourse.repository.StudentRepository;
 import com.labcourse.service.impl.MajorServiceImpl;
@@ -34,15 +37,29 @@ class MajorServiceImplTest {
     private MajorServiceImpl service;
     private MajorRepository majorRepository;
     private StudentRepository studentRepository;
+    private CollegeRepository collegeRepository;
+    private MajorRequiredCourseRepository majorRequiredCourseRepository;
 
     @BeforeEach
     void setUp() {
         service = new MajorServiceImpl();
         majorRepository = mock(MajorRepository.class);
         studentRepository = mock(StudentRepository.class);
+        collegeRepository = mock(CollegeRepository.class);
+        majorRequiredCourseRepository = mock(MajorRequiredCourseRepository.class);
 
         injectField(service, "majorRepository", majorRepository);
         injectField(service, "studentRepository", studentRepository);
+        injectField(service, "collegeRepository", collegeRepository);
+        injectField(service, "majorRequiredCourseRepository", majorRequiredCourseRepository);
+
+        when(collegeRepository.findById(anyLong())).thenAnswer(invocation -> {
+            College college = new College();
+            college.setId(invocation.getArgument(0));
+            college.setStatus("ACTIVE");
+            return Optional.of(college);
+        });
+        when(majorRequiredCourseRepository.findByMajorId(anyLong())).thenReturn(List.of());
     }
 
     // ================================================================

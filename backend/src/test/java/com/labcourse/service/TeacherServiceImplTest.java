@@ -51,6 +51,9 @@ class TeacherServiceImplTest {
         injectField(service, "loginAttemptService", loginAttemptService);
         injectField(service, "collegeRepository", collegeRepository);
         injectField(service, "courseRepository", courseRepository);
+
+        when(collegeRepository.findById(anyLong())).thenAnswer(invocation ->
+                Optional.of(activeCollege(invocation.getArgument(0))));
     }
 
     // ================================================================
@@ -162,6 +165,7 @@ class TeacherServiceImplTest {
         teacher.setTeacherNo("T001");
         teacher.setName("新教师");
         teacher.setPassword(rawPassword);
+        teacher.setCollegeId(1L);
 
         boolean result = service.save(teacher);
         assertTrue(result);
@@ -229,7 +233,7 @@ class TeacherServiceImplTest {
         update.setCollegeId(2L);
 
         when(teacherRepository.findById(1L)).thenReturn(Optional.of(existing));
-        when(collegeRepository.findById(2L)).thenReturn(Optional.of(new College()));
+        when(collegeRepository.findById(2L)).thenReturn(Optional.of(activeCollege(2L)));
 
         boolean result = service.updateById(update);
         assertTrue(result, "无关联课程时应允许变更学院");
@@ -251,7 +255,7 @@ class TeacherServiceImplTest {
         update.setCollegeId(1L);  // 首次设置
 
         when(teacherRepository.findById(1L)).thenReturn(Optional.of(existing));
-        when(collegeRepository.findById(1L)).thenReturn(Optional.of(new College()));
+        when(collegeRepository.findById(1L)).thenReturn(Optional.of(activeCollege(1L)));
 
         boolean result = service.updateById(update);
         assertTrue(result, "首次设置学院ID应不触发课程检查");
@@ -360,5 +364,12 @@ class TeacherServiceImplTest {
         } catch (Exception e) {
             fail("无法注入 " + fieldName + ": " + e.getMessage());
         }
+    }
+
+    private College activeCollege(Long id) {
+        College college = new College();
+        college.setId(id);
+        college.setStatus("ACTIVE");
+        return college;
     }
 }

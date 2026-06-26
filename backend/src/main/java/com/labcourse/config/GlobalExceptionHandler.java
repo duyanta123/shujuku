@@ -1,6 +1,7 @@
 package com.labcourse.config;
 
 import com.labcourse.exception.AccountLockedException;
+import com.labcourse.exception.BusinessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -58,6 +59,15 @@ public class GlobalExceptionHandler {
         result.put("locked", true);
         result.put("remainingMinutes", ex.getRemainingMinutes());
         return ResponseEntity.status(423).body(result);
+    }
+
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<Map<String, Object>> handleBusinessException(BusinessException ex) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", false);
+        result.put("code", ex.getCode());
+        result.put("message", ex.getMessage());
+        return ResponseEntity.status(ex.getStatus()).body(result);
     }
 
     @ExceptionHandler(Exception.class)

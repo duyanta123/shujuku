@@ -99,6 +99,7 @@ const capacityText = (course) => {
 }
 
 const capacityStatus = (course) => {
+  if ((course.course_type || course.courseType) === 'REQUIRED') return { type: 'info', label: '必修' }
   if (!validCapacity(course)) return { type: 'danger', label: '异常' }
   return Number(course.selected_count || 0) >= Number(course.max_count)
     ? { type: 'danger', label: '已满' }
@@ -106,6 +107,7 @@ const capacityStatus = (course) => {
 }
 
 const canSelect = (course) => {
+  if ((course.course_type || course.courseType) === 'REQUIRED') return false
   return validCapacity(course) && Number(course.selected_count || 0) < Number(course.max_count)
 }
 

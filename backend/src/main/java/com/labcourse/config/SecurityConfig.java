@@ -52,7 +52,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/student/login", "/api/teacher/login", "/api/admin/login").permitAll()
                         .requestMatchers("/api/course/list", "/api/course/list/simple").permitAll()
                         // Token刷新/登出接口：permitAll，由Controller内部自行验证refreshToken
-                        .requestMatchers("/api/auth/refresh", "/api/auth/logout").permitAll()
+                        .requestMatchers("/api/auth/refresh", "/api/auth/logout", "/api/auth/validate").permitAll()
                         // 管理员可管理学生（增删改查）
                         .requestMatchers("/api/student/add", "/api/student/update", "/api/student/delete/**", "/api/student/list").hasRole("admin")
                         .requestMatchers("/api/student/reset-password/**").hasRole("admin")
@@ -64,7 +64,8 @@ public class SecurityConfig {
                         // 学生可访问的考勤接口（签到、历史记录、服务器时间）
                         .requestMatchers("/api/attendance/check-in", "/api/attendance/history", "/api/attendance/server-time").hasRole("student")
                         // 教师角色的接口
-                        .requestMatchers("/api/selection/studentList/**", "/api/score/**").hasRole("teacher")
+                        .requestMatchers("/api/selection/studentList/**").hasRole("teacher")
+                        .requestMatchers("/api/score/**").hasAnyRole("teacher", "admin")
                         // 教师可访问的考勤管理接口
                         .requestMatchers("/api/attendance/course", "/api/attendance/dates", "/api/attendance/update-status", "/api/attendance/export", "/api/attendance/add", "/api/attendance/batch-absent").hasRole("teacher")
                         // 管理员角色的接口
@@ -73,6 +74,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/lab/**").hasRole("admin")
                         .requestMatchers("/api/college/**").hasRole("admin")
                         .requestMatchers("/api/major/**").hasRole("admin")
+                        .requestMatchers("/api/major-required-course/**").hasRole("admin")
                         // 用户接口：任何认证用户均可访问
                         .requestMatchers("/api/user/**").authenticated()
                         .requestMatchers("/api/student/change-password").authenticated()

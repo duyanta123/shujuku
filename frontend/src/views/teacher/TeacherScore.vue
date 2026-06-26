@@ -25,6 +25,7 @@
         <el-table-column prop="student_no" label="学号" width="150" />
         <el-table-column prop="name" label="姓名" width="120" />
         <el-table-column prop="major" label="专业" min-width="180" />
+        <el-table-column prop="college" label="学院" min-width="180" />
         <el-table-column label="成绩" width="180">
           <template #default="scope">
             <el-input-number v-model="scope.row.score" :min="0" :max="100" :precision="1" size="small" controls-position="right" />
@@ -44,8 +45,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getMyTeachingCourses } from '../../api/course'
-import { getStudentList } from '../../api/selection'
-import { addScore } from '../../api/score'
+import { addScore, getScoresByCourse } from '../../api/score'
 
 const courseList = ref([])
 const studentList = ref([])
@@ -65,9 +65,13 @@ const loadCourses = async () => {
 const loadStudents = async () => {
   if (!selectedCourse.value) { studentList.value = []; return }
   try {
-    const result = await getStudentList(selectedCourse.value)
+    const result = await getScoresByCourse(selectedCourse.value)
     if (result.success) {
-      studentList.value = result.data.map(s => ({ ...s, score: null }))
+      studentList.value = (result.data || []).map(s => ({
+        ...s,
+        student_no: s.student_no || s.studentNo,
+        score: s.score === undefined ? null : s.score
+      }))
     }
   } catch (error) {
     ElMessage.error('加载学生列表失败')
@@ -87,6 +91,7 @@ const handleSaveScore = async (student) => {
     })
     if (result.success) {
       ElMessage.success('成绩录入成功')
+      student.score = Number(student.score)
     } else {
       ElMessage.error(result.message)
     }

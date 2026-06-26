@@ -1,6 +1,7 @@
 package com.labcourse.controller;
 
 import com.labcourse.entity.Course;
+import com.labcourse.exception.BusinessException;
 import com.labcourse.service.CourseService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -57,7 +58,7 @@ public class CourseController {
             return ResponseEntity.ok(result);
         }
         result.put("success", true);
-        result.put("data", courseService.list(collegeId));
+        result.put("data", courseService.listSimple(collegeId));
         return ResponseEntity.ok(result);
     }
 
@@ -100,6 +101,9 @@ public class CourseController {
             result.put("message", success ? "删除成功" : "删除失败，课程不存在或存在关联数据无法删除");
             return ResponseEntity.ok(result);
         } catch (Exception e) {
+            if (e instanceof BusinessException businessException) {
+                throw businessException;
+            }
             logger.error("删除课程 {} 时发生异常", id, e);
             result.put("success", false);
             result.put("message", "删除失败，请确认该课程下无关联数据或联系管理员");

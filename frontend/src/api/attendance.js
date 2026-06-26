@@ -61,3 +61,11 @@ export function getServerTime() {
     method: 'get'
   })
 }
+
+export function batchCreateAbsent(data) {
+  return request({
+    url: '/attendance/batch-absent',
+    method: 'post',
+    data
+  })
+}

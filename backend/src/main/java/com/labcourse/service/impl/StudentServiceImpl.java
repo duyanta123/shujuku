@@ -7,6 +7,7 @@ import com.labcourse.entity.MajorRequiredCourse;
 import com.labcourse.entity.Selection;
 import com.labcourse.entity.Student;
 import com.labcourse.exception.AccountLockedException;
+import com.labcourse.exception.BusinessException;
 import com.labcourse.repository.AttendanceRepository;
 import com.labcourse.repository.CollegeRepository;
 import com.labcourse.repository.CourseRepository;
@@ -22,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -98,6 +100,7 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public boolean save(Student student) {
+        validateStudentRelations(student.getCollegeId(), student.getMajorId());
         PasswordPolicy.requireValid(student.getPassword());
         student.setPassword(passwordEncoder.encode(student.getPassword()));
         studentRepository.save(student);
@@ -113,6 +116,14 @@ public class StudentServiceImpl implements StudentService {
         if (existingOpt.isPresent()) {
             Student existing = existingOpt.get();
             Long oldMajorId = existing.getMajorId();
+            Long candidateCollegeId = student.getCollegeId() != null ? student.getCollegeId() : existing.getCollegeId();
+            Long candidateMajorId = student.getMajorId() != null ? student.getMajorId() : existing.getMajorId();
+            boolean relationChanged =
+                    (student.getCollegeId() != null && !student.getCollegeId().equals(existing.getCollegeId()))
+                    || (student.getMajorId() != null && !student.getMajorId().equals(existing.getMajorId()));
+            if (relationChanged) {
+                validateStudentRelations(candidateCollegeId, candidateMajorId);
+            }
             if (student.getStudentNo() != null && !student.getStudentNo().isEmpty()) {
                 existing.setStudentNo(student.getStudentNo());
             }
@@ -218,6 +229,24 @@ public class StudentServiceImpl implements StudentService {
                 logger.info("为学生 {} 自动分配必修课 {}", studentId, course.getCourseName());
             } catch (Exception e) {
                 logger.warn("为学生 {} 自动分配必修课时出错，课程ID={}: {}", studentId, mrc.getCourseId(), e.getMessage());
+            }
+        }
+    }
+
+    private void validateStudentRelations(Long collegeId, Long majorId) {
+        if (collegeId == null) {
+            throw new BusinessException("INVALID_RELATION", "学院不能为空", HttpStatus.BAD_REQUEST);
+        }
+        College college = collegeRepository.findById(collegeId)
+                .orElseThrow(() -> new BusinessException("COLLEGE_NOT_FOUND", "学院不存在", HttpStatus.BAD_REQUEST));
+        if (!"ACTIVE".equals(college.getStatus())) {
+            throw new BusinessException("INVALID_RELATION", "学院已停用", HttpStatus.BAD_REQUEST);
+        }
+        if (majorId != null) {
+            Major major = majorRepository.findById(majorId)
+                    .orElseThrow(() -> new BusinessException("MAJOR_NOT_FOUND", "专业不存在", HttpStatus.BAD_REQUEST));
+            if (!"ACTIVE".equals(major.getStatus()) || !collegeId.equals(major.getCollegeId())) {
+                throw new BusinessException("INVALID_RELATION", "专业必须属于所选学院且处于启用状态", HttpStatus.BAD_REQUEST);
             }
         }
     }

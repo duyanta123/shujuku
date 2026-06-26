@@ -31,6 +31,7 @@ export const adminLayoutConfig = {
     { to: '/admin/student', icon: 'student', label: '学生管理' },
     { to: '/admin/teacher', icon: 'teacher', label: '教师管理' },
     { to: '/admin/course', icon: 'course', label: '课程管理' },
+    { to: '/admin/required-course', icon: 'schedule', label: '必修课配置' },
     { to: '/admin/lab', icon: 'lab', label: '实验室管理' },
     { to: '/admin/college-major', icon: 'college', label: '学院专业管理' },
   ],

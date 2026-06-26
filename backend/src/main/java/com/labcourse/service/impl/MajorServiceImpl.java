@@ -1,12 +1,17 @@
 package com.labcourse.service.impl;
 
+import com.labcourse.entity.College;
 import com.labcourse.entity.Major;
+import com.labcourse.exception.BusinessException;
+import com.labcourse.repository.CollegeRepository;
+import com.labcourse.repository.MajorRequiredCourseRepository;
 import com.labcourse.repository.MajorRepository;
 import com.labcourse.repository.StudentRepository;
 import com.labcourse.service.MajorService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -32,6 +37,12 @@ public class MajorServiceImpl implements MajorService {
 
     @Autowired
     private StudentRepository studentRepository;
+
+    @Autowired
+    private CollegeRepository collegeRepository;
+
+    @Autowired
+    private MajorRequiredCourseRepository majorRequiredCourseRepository;
 
     @Override
     public Map<String, Object> list(String name, Long collegeId, String status, int page, int size, String sortBy, String sortDir) {
@@ -113,6 +124,8 @@ public class MajorServiceImpl implements MajorService {
 
     @Override
     public boolean save(Major major) {
+        validateCollege(major.getCollegeId());
+        validateStatus(major.getStatus());
         if (majorRepository.findByCollegeIdAndName(major.getCollegeId(), major.getName()).isPresent()) {
             return false;
         }
@@ -124,11 +137,20 @@ public class MajorServiceImpl implements MajorService {
     public boolean update(Major major) {
         Optional<Major> existingOpt = majorRepository.findById(major.getId());
         if (existingOpt.isPresent()) {
-            Optional<Major> duplicate = majorRepository.findByCollegeIdAndName(major.getCollegeId(), major.getName());
+            Major existing = existingOpt.get();
+            Long candidateCollegeId = major.getCollegeId() != null ? major.getCollegeId() : existing.getCollegeId();
+            String candidateName = major.getName() != null ? major.getName() : existing.getName();
+            boolean collegeChanged = major.getCollegeId() != null && !major.getCollegeId().equals(existing.getCollegeId());
+            if (collegeChanged) {
+                validateCollege(candidateCollegeId);
+            }
+            if (major.getStatus() != null) {
+                validateStatus(major.getStatus());
+            }
+            Optional<Major> duplicate = majorRepository.findByCollegeIdAndName(candidateCollegeId, candidateName);
             if (duplicate.isPresent() && !duplicate.get().getId().equals(major.getId())) {
                 return false;
             }
-            Major existing = existingOpt.get();
             if (major.getName() != null && !major.getName().isEmpty()) {
                 existing.setName(major.getName());
             }
@@ -152,7 +174,15 @@ public class MajorServiceImpl implements MajorService {
 
         if (studentCount > 0) {
             result.put("success", false);
+            result.put("code", "MAJOR_HAS_STUDENTS");
             result.put("message", String.format("该专业下存在 %d 名学生，无法删除", studentCount));
+            return result;
+        }
+        long requiredCourseCount = majorRequiredCourseRepository.findByMajorId(id).size();
+        if (requiredCourseCount > 0) {
+            result.put("success", false);
+            result.put("code", "REQUIRED_COURSE_BINDING_MISSING");
+            result.put("message", String.format("该专业存在 %d 个必修课绑定，请先解除绑定", requiredCourseCount));
             return result;
         }
 
@@ -169,5 +199,22 @@ public class MajorServiceImpl implements MajorService {
             result.put("message", "专业不存在");
         }
         return result;
+    }
+
+    private void validateCollege(Long collegeId) {
+        if (collegeId == null) {
+            throw new BusinessException("COLLEGE_NOT_FOUND", "学院不存在", HttpStatus.BAD_REQUEST);
+        }
+        College college = collegeRepository.findById(collegeId)
+                .orElseThrow(() -> new BusinessException("COLLEGE_NOT_FOUND", "学院不存在", HttpStatus.BAD_REQUEST));
+        if (!"ACTIVE".equals(college.getStatus())) {
+            throw new BusinessException("INVALID_RELATION", "学院已停用", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    private void validateStatus(String status) {
+        if (!"ACTIVE".equals(status) && !"INACTIVE".equals(status)) {
+            throw new BusinessException("INVALID_STATUS", "status must be ACTIVE or INACTIVE", HttpStatus.BAD_REQUEST);
+        }
     }
 }

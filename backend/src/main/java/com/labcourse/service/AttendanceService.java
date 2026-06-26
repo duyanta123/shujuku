@@ -39,6 +39,11 @@ public interface AttendanceService {
     Map<String, Object> updateAttendanceStatus(Long attendanceId, String newStatus, Long teacherId, String reason);
 
     /**
+     * Create real absent records for selected students that do not have an attendance record yet.
+     */
+    Map<String, Object> batchCreateAbsent(Long courseId, LocalDate date);
+
+    /**
      * 获取课程的所有考勤日期列表
      */
     List<LocalDate> getAttendanceDates(Long courseId);

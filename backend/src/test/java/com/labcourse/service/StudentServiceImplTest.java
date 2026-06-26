@@ -75,6 +75,18 @@ class StudentServiceImplTest {
         injectField(service, "attendanceRepository", attendanceRepository);
         injectField(service, "collegeRepository", collegeRepository);
         injectField(service, "majorRepository", majorRepository);
+
+        College activeCollege = new College();
+        activeCollege.setId(1L);
+        activeCollege.setStatus("ACTIVE");
+        when(collegeRepository.findById(anyLong())).thenReturn(Optional.of(activeCollege));
+        when(majorRepository.findById(anyLong())).thenAnswer(invocation -> {
+            Major major = new Major();
+            major.setId(invocation.getArgument(0));
+            major.setCollegeId(1L);
+            major.setStatus("ACTIVE");
+            return Optional.of(major);
+        });
     }
 
     // ================================================================
@@ -88,6 +100,7 @@ class StudentServiceImplTest {
         student.setStudentNo("S100");
         student.setName("新学生");
         student.setPassword("RawPass1!");
+        student.setCollegeId(1L);
         student.setMajorId(1L);
 
         when(passwordEncoder.encode("RawPass1!")).thenReturn("encodedPassword");
@@ -122,6 +135,7 @@ class StudentServiceImplTest {
         Student student = new Student();
         student.setStudentNo("S101");
         student.setPassword("RawPass1!");
+        student.setCollegeId(1L);
         student.setMajorId(null);
 
         when(passwordEncoder.encode("RawPass1!")).thenReturn("encodedPassword");
@@ -138,6 +152,7 @@ class StudentServiceImplTest {
         Student student = new Student();
         student.setStudentNo("S102");
         student.setPassword("RawPass1!");
+        student.setCollegeId(1L);
         student.setMajorId(99L);
 
         when(passwordEncoder.encode("RawPass1!")).thenReturn("encodedPassword");
@@ -190,6 +205,8 @@ class StudentServiceImplTest {
 
         Major newMajor = new Major();
         newMajor.setId(2L);
+        newMajor.setCollegeId(1L);
+        newMajor.setStatus("ACTIVE");
         newMajor.setName("计算机科学与技术");
         when(majorRepository.findById(2L)).thenReturn(Optional.of(newMajor));
 
@@ -217,6 +234,7 @@ class StudentServiceImplTest {
         Student existing = new Student();
         existing.setId(1L);
         existing.setMajorId(1L);
+        existing.setCollegeId(1L);
 
         Student update = new Student();
         update.setId(1L);
@@ -236,7 +254,7 @@ class StudentServiceImplTest {
         newMrc.setMajorId(2L);
         newMrc.setCourseId(20L);
         when(majorRequiredCourseRepository.findByMajorId(2L)).thenReturn(List.of(newMrc));
-        when(majorRepository.findById(2L)).thenReturn(Optional.of(new Major()));
+        when(majorRepository.findById(2L)).thenReturn(Optional.of(activeMajor(2L)));
         when(courseRepository.findById(20L)).thenReturn(Optional.of(new Course()));
         when(selectionRepository.findByStudentIdAndCourseId(1L, 20L)).thenReturn(Optional.empty());
 
@@ -254,6 +272,7 @@ class StudentServiceImplTest {
         Student existing = new Student();
         existing.setId(1L);
         existing.setMajorId(null);  // 之前没有专业
+        existing.setCollegeId(1L);
 
         Student update = new Student();
         update.setId(1L);
@@ -266,7 +285,7 @@ class StudentServiceImplTest {
         mrc.setCourseId(30L);
         when(majorRequiredCourseRepository.findByMajorId(3L)).thenReturn(List.of(mrc));
 
-        when(majorRepository.findById(3L)).thenReturn(Optional.of(new Major()));
+        when(majorRepository.findById(3L)).thenReturn(Optional.of(activeMajor(3L)));
 
         Course course = new Course();
         course.setId(30L);
@@ -416,6 +435,7 @@ class StudentServiceImplTest {
         Student student = new Student();
         student.setStudentNo("S200");
         student.setPassword("RawPass1!");
+        student.setCollegeId(1L);
         student.setMajorId(5L);
 
         MajorRequiredCourse mrc = new MajorRequiredCourse();
@@ -437,6 +457,7 @@ class StudentServiceImplTest {
         Student student = new Student();
         student.setStudentNo("S201");
         student.setPassword("RawPass1!");
+        student.setCollegeId(1L);
         student.setMajorId(6L);
 
         MajorRequiredCourse mrc = new MajorRequiredCourse();
@@ -496,6 +517,14 @@ class StudentServiceImplTest {
     }
 
     // ===== 工具方法 =====
+
+    private static Major activeMajor(Long id) {
+        Major major = new Major();
+        major.setId(id);
+        major.setCollegeId(1L);
+        major.setStatus("ACTIVE");
+        return major;
+    }
 
     private static void injectField(Object target, String fieldName, Object value) {
         try {

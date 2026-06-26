@@ -2,6 +2,11 @@ package com.labcourse.service.impl;
 
 import com.labcourse.entity.College;
 import com.labcourse.repository.CollegeRepository;
+import com.labcourse.repository.CourseRepository;
+import com.labcourse.repository.LabRepository;
+import com.labcourse.repository.MajorRepository;
+import com.labcourse.repository.StudentRepository;
+import com.labcourse.repository.TeacherRepository;
 import com.labcourse.service.CollegeService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +31,21 @@ public class CollegeServiceImpl implements CollegeService {
 
     @Autowired
     private CollegeRepository collegeRepository;
+
+    @Autowired
+    private MajorRepository majorRepository;
+
+    @Autowired
+    private StudentRepository studentRepository;
+
+    @Autowired
+    private TeacherRepository teacherRepository;
+
+    @Autowired
+    private LabRepository labRepository;
+
+    @Autowired
+    private CourseRepository courseRepository;
 
     @Override
     public Map<String, Object> list(String name, String status, int page, int size, String sortBy, String sortDir) {
@@ -114,12 +134,24 @@ public class CollegeServiceImpl implements CollegeService {
 
         Optional<College> collegeOpt = collegeRepository.findById(id);
         if (collegeOpt.isPresent()) {
+            long majorCount = majorRepository.countByCollegeId(id);
+            long studentCount = studentRepository.countByCollegeId(id);
+            long teacherCount = teacherRepository.countByCollegeId(id);
+            long labCount = labRepository.countByCollegeId(id);
+            long courseCount = courseRepository.countByCollegeId(id);
             College college = collegeOpt.get();
             college.setStatus("INACTIVE");
             collegeRepository.save(college);
             logger.info("管理员操作 - 停用学院: {} (ID:{})", college.getName(), id);
             result.put("success", true);
             result.put("message", "学院已停用");
+            result.put("impact", Map.of(
+                    "majors", majorCount,
+                    "students", studentCount,
+                    "teachers", teacherCount,
+                    "labs", labCount,
+                    "courses", courseCount
+            ));
         } else {
             result.put("success", false);
             result.put("message", "学院不存在");

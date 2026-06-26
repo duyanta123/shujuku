@@ -7,3 +7,10 @@ export function addScore(data) {
     data
   })
 }
+
+export function getScoresByCourse(courseId) {
+  return request({
+    url: `/score/course/${courseId}`,
+    method: 'get'
+  })
+}

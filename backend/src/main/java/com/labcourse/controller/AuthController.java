@@ -32,6 +32,42 @@ public class AuthController {
     @Autowired
     private AdminRepository adminRepository;
 
+    @GetMapping("/validate")
+    public ResponseEntity<Map<String, Object>> validateToken(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        Map<String, Object> response = new HashMap<>();
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            response.put("success", false);
+            response.put("message", "缺少访问令牌");
+            return ResponseEntity.status(401).body(response);
+        }
+
+        String token = authHeader.substring(7);
+        Claims claims = jwtUtil.validateAccessToken(token);
+        if (claims == null) {
+            response.put("success", false);
+            response.put("message", "访问令牌无效或已过期");
+            return ResponseEntity.status(401).body(response);
+        }
+
+        Long userId = Long.valueOf(claims.getSubject());
+        String role = claims.get("role", String.class);
+        if (!userExists(userId, role)) {
+            response.put("success", false);
+            response.put("message", "用户不存在");
+            return ResponseEntity.status(401).body(response);
+        }
+
+        response.put("success", true);
+        response.put("message", "Token有效");
+        response.put("data", Map.of(
+                "userId", userId,
+                "username", claims.get("username", String.class),
+                "role", role
+        ));
+        return ResponseEntity.ok(response);
+    }
+
     /**
      * Token 刷新 — 使用 Refresh Token 轮转获取新令牌
      * Security fix (HIGH-001): 每次刷新生成新的 Access Token 和 Refresh Token
@@ -154,6 +190,18 @@ public class AuthController {
         if (admin.isPresent()) return admin;
 
         return Optional.empty();
+    }
+
+    private boolean userExists(Long userId, String role) {
+        if (role == null) {
+            return false;
+        }
+        return switch (role.toLowerCase()) {
+            case "student" -> studentRepository.existsById(userId);
+            case "teacher" -> teacherRepository.existsById(userId);
+            case "admin" -> adminRepository.existsById(userId);
+            default -> false;
+        };
     }
 
     private void saveRefreshToken(Object user, String refreshToken) {

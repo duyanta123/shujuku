@@ -2,10 +2,13 @@ package com.labcourse.service.impl;
 
 import com.labcourse.entity.College;
 import com.labcourse.entity.Lab;
+import com.labcourse.exception.BusinessException;
 import com.labcourse.repository.CollegeRepository;
+import com.labcourse.repository.CourseRepository;
 import com.labcourse.repository.LabRepository;
 import com.labcourse.service.LabService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -20,6 +23,9 @@ public class LabServiceImpl implements LabService {
 
     @Autowired
     private CollegeRepository collegeRepository;
+
+    @Autowired
+    private CourseRepository courseRepository;
 
     @Override
     public List<Lab> list() {
@@ -71,6 +77,9 @@ public class LabServiceImpl implements LabService {
 
     @Override
     public boolean removeById(Long id) {
+        if (courseRepository.existsByLabId(id)) {
+            throw new BusinessException("LAB_IN_USE", "实验室已被课程引用，无法删除", HttpStatus.CONFLICT);
+        }
         labRepository.deleteById(id);
         return true;
     }

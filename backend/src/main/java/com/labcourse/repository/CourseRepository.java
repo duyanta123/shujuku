@@ -15,6 +15,8 @@ import java.util.Optional;
 public interface CourseRepository extends JpaRepository<Course, Long> {
     List<Course> findByTeacherId(Long teacherId);
     List<Course> findByCollegeId(Long collegeId);
+    long countByCollegeId(Long collegeId);
+    boolean existsByLabId(Long labId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT c FROM Course c WHERE c.id = :id")

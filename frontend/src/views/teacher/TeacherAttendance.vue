@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2>考勤管理</h2>
       <div class="header-actions">
+        <el-button size="small" type="primary" plain @click="generateAbsent" :disabled="!selectedCourse || !selectedDate" :loading="generatingAbsent">
+          生成缺勤记录
+        </el-button>
         <el-button size="small" @click="exportExcel" :disabled="!selectedCourse || studentList.length === 0">
           导出 Excel
         </el-button>
@@ -109,6 +112,7 @@
                 type="warning"
                 size="small"
                 plain
+                :disabled="!scope.row.attendanceId"
                 @click="handleModify(scope.row)"
               >
                 改为请假
@@ -153,7 +157,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getMyTeachingCourses } from '../../api/course'
-import { getCourseAttendance, getAttendanceDates, updateAttendanceStatus, exportAttendance } from '../../api/attendance'
+import { batchCreateAbsent, getCourseAttendance, getAttendanceDates, updateAttendanceStatus, exportAttendance } from '../../api/attendance'
 import ExcelJS from 'exceljs'
 
 const loading = ref(false)
@@ -166,6 +170,7 @@ const modifyVisible = ref(false)
 const modifyTarget = ref(null)
 const modifyReason = ref('')
 const modifying = ref(false)
+const generatingAbsent = ref(false)
 
 const stats = computed(() => {
   const result = { attend: 0, late: 0, absent: 0, leave: 0, total: studentList.value.length }
@@ -240,6 +245,8 @@ async function onCourseChange() {
       if (attendanceDates.value.length > 0) {
         selectedDate.value = attendanceDates.value[0]
         await loadAttendance()
+      } else {
+        selectedDate.value = new Date().toISOString().slice(0, 10)
       }
     }
   } catch {
@@ -271,9 +278,36 @@ async function loadAttendance() {
 }
 
 function handleModify(row) {
+  if (!row.attendanceId) {
+    ElMessage.warning('请先生成真实缺勤记录')
+    return
+  }
   modifyTarget.value = row
   modifyReason.value = ''
   modifyVisible.value = true
+}
+
+async function generateAbsent() {
+  if (!selectedCourse.value || !selectedDate.value) return
+  generatingAbsent.value = true
+  try {
+    const result = await batchCreateAbsent({
+      courseId: selectedCourse.value,
+      date: selectedDate.value
+    })
+    if (result.success) {
+      ElMessage.success(result.message || '缺勤记录生成完成')
+      await loadAttendance()
+      const datesResult = await getAttendanceDates(selectedCourse.value)
+      if (datesResult.success) attendanceDates.value = datesResult.data || []
+    } else {
+      ElMessage.error(result.message || '生成失败')
+    }
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '生成失败')
+  } finally {
+    generatingAbsent.value = false
+  }
 }
 
 async function confirmModify() {

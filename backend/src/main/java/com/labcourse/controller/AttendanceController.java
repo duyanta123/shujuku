@@ -212,10 +212,19 @@ public class AttendanceController {
         }
         ResponseEntity<Map<String, Object>> ownershipCheck = validateTeacherCourseOwnership(courseId);
         if (ownershipCheck != null) return ownershipCheck;
-        // 此功能简化：返回提示，实际缺勤由前端查询时自动展示
-        Map<String, Object> result = new HashMap<>();
-        result.put("success", true);
-        result.put("message", "缺勤记录由系统自动判定");
+        LocalDate date = LocalDate.now();
+        Object dateObj = data.get("date");
+        if (dateObj != null && !dateObj.toString().isBlank()) {
+            try {
+                date = LocalDate.parse(dateObj.toString());
+            } catch (Exception e) {
+                Map<String, Object> result = new HashMap<>();
+                result.put("success", false);
+                result.put("message", "Invalid date");
+                return ResponseEntity.badRequest().body(result);
+            }
+        }
+        Map<String, Object> result = attendanceService.batchCreateAbsent(courseId, date);
         return ResponseEntity.ok(result);
     }
 
