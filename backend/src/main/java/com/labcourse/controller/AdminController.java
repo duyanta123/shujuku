@@ -33,14 +33,17 @@ public class AdminController {
         Map<String, Object> result = new HashMap<>();
 
         if (admin != null) {
-            // Security fix (HIGH-001): 生成双Token
             String accessToken = jwtUtil.generateAccessToken(admin.getId(), admin.getUsername(), "admin");
             String refreshToken = jwtUtil.generateRefreshToken(admin.getId());
             admin.setRefreshToken(refreshToken);
             adminRepository.save(admin);
             result.put("success", true);
             result.put("message", "登录成功");
-            result.put("data", admin);
+            result.put("data", Map.of(
+                    "id", admin.getId(),
+                    "username", admin.getUsername(),
+                    "avatarUrl", admin.getAvatarUrl()
+            ));
             result.put("accessToken", accessToken);
             result.put("refreshToken", refreshToken);
             return ResponseEntity.ok(result);

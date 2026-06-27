@@ -50,19 +50,17 @@ public class JwtFilter extends OncePerRequestFilter {
             if (StringUtils.hasText(token) && jwtUtil.validateToken(token)) {
                 Long userId = jwtUtil.extractUserId(token);
                 String role = jwtUtil.extractRole(token);
-                if (userId == null || !isExistingUser(userId, role)) {
-                    filterChain.doFilter(request, response);
-                    return;
+                if (userId != null && isExistingUser(userId, role)) {
+                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                            userId, null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role))
+                    );
+                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
                 }
-
-                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        userId, null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role))
-                );
-                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(authentication);
             }
         } catch (Exception e) {
             logger.error("JWT验证失败", e);
+            SecurityContextHolder.clearContext();
         }
         filterChain.doFilter(request, response);
     }

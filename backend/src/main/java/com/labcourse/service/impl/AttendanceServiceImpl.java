@@ -85,16 +85,24 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     public boolean addAttendance(Long studentId, Long courseId, String status) {
+        AttendanceStatus attendanceStatus;
+        try {
+            attendanceStatus = AttendanceStatus.valueOf(status);
+        } catch (IllegalArgumentException e) {
+            log.warn("[addAttendance] 无效的考勤状态: {}", status);
+            return false;
+        }
+        
         LocalDate today = LocalDate.now();
         Attendance existing = attendanceRepository.findByStudentIdAndCourseIdAndAttendanceDate(studentId, courseId, today).orElse(null);
         if (existing != null) {
-            existing.setAttendanceStatus(AttendanceStatus.valueOf(status));
+            existing.setAttendanceStatus(attendanceStatus);
             attendanceRepository.save(existing);
         } else {
             Attendance newAttendance = new Attendance();
             newAttendance.setStudentId(studentId);
             newAttendance.setCourseId(courseId);
-            newAttendance.setAttendanceStatus(AttendanceStatus.valueOf(status));
+            newAttendance.setAttendanceStatus(attendanceStatus);
             newAttendance.setAttendanceDate(today);
             attendanceRepository.save(newAttendance);
         }
@@ -215,7 +223,13 @@ public class AttendanceServiceImpl implements AttendanceService {
 
         AttendanceStatus status;
         String statusReason;
-        if (minutesBeforeStart >= 0 && minutesBeforeStart <= 10) {
+        if (minutesBeforeStart > 10) {
+            log.info("[checkIn] 线程-{} | 分支-过早签到 | studentId={}, courseId={}, minutesBeforeStart={}",
+                    threadId, studentId, courseId, minutesBeforeStart);
+            result.put("success", false);
+            result.put("message", "签到时间过早，请在上课前10分钟内签到");
+            return result;
+        } else if (minutesBeforeStart >= 0 && minutesBeforeStart <= 10) {
             status = AttendanceStatus.出勤;
             statusReason = "课前" + minutesBeforeStart + "分钟签到";
             log.info("[checkIn] 线程-{} | 分支-出勤(课前) | studentId={}, courseId={}, minutesBeforeStart={}",
@@ -232,9 +246,9 @@ public class AttendanceServiceImpl implements AttendanceService {
                     threadId, studentId, courseId, minutesAfterStart);
         } else {
             status = AttendanceStatus.出勤;
-            statusReason = "过早签到(课前超过" + (-minutesBeforeStart) + "分钟)";
-            log.info("[checkIn] 线程-{} | 分支-出勤(过早) | studentId={}, courseId={}, minutesBeforeStart={}",
-                    threadId, studentId, courseId, minutesBeforeStart);
+            statusReason = "签到成功";
+            log.info("[checkIn] 线程-{} | 分支-出勤 | studentId={}, courseId={}",
+                    threadId, studentId, courseId);
         }
 
         // 5. 调用存储过程检查签到状态（替代悲观锁防重复）

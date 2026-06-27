@@ -35,14 +35,20 @@ public class TeacherController {
         Map<String, Object> result = new HashMap<>();
 
         if (teacher != null) {
-            // Security fix (HIGH-001): 生成双Token
             String accessToken = jwtUtil.generateAccessToken(teacher.getId(), teacher.getTeacherNo(), "teacher");
             String refreshToken = jwtUtil.generateRefreshToken(teacher.getId());
             teacher.setRefreshToken(refreshToken);
             teacherRepository.save(teacher);
             result.put("success", true);
             result.put("message", "登录成功");
-            result.put("data", teacher);
+            result.put("data", Map.of(
+                    "id", teacher.getId(),
+                    "teacherNo", teacher.getTeacherNo(),
+                    "name", teacher.getName(),
+                    "title", teacher.getTitle(),
+                    "collegeId", teacher.getCollegeId(),
+                    "avatarUrl", teacher.getAvatarUrl()
+            ));
             result.put("accessToken", accessToken);
             result.put("refreshToken", refreshToken);
             return ResponseEntity.ok(result);

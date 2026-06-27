@@ -34,15 +34,21 @@ public class StudentController {
         Student student = studentService.login(studentNo, password);
         Map<String, Object> result = new HashMap<>();
         if (student != null) {
-            // Security fix (HIGH-001): 生成双Token — Access Token + Refresh Token
             String accessToken = jwtUtil.generateAccessToken(student.getId(), student.getStudentNo(), "student");
             String refreshToken = jwtUtil.generateRefreshToken(student.getId());
-            // 保存 Refresh Token 到数据库
             student.setRefreshToken(refreshToken);
             studentRepository.save(student);
             result.put("success", true);
             result.put("message", "登录成功");
-            result.put("data", student);
+            result.put("data", Map.of(
+                    "id", student.getId(),
+                    "studentNo", student.getStudentNo(),
+                    "name", student.getName(),
+                    "gender", student.getGender(),
+                    "collegeId", student.getCollegeId(),
+                    "majorId", student.getMajorId(),
+                    "avatarUrl", student.getAvatarUrl()
+            ));
             result.put("accessToken", accessToken);
             result.put("refreshToken", refreshToken);
             return ResponseEntity.ok(result);
