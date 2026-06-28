@@ -42,7 +42,7 @@ public class StudentController {
             studentRepository.save(student);
             result.put("success", true);
             result.put("message", "登录成功");
-            result.put("data", student);
+            result.put("data", loginData(student));
             result.put("accessToken", accessToken);
             result.put("refreshToken", refreshToken);
             return ResponseEntity.ok(result);
@@ -134,5 +134,17 @@ public class StudentController {
             result.put("message", "旧密码错误");
         }
         return ResponseEntity.ok(result);
+    }
+
+    private Map<String, Object> loginData(Student student) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("id", student.getId());
+        data.put("studentNo", student.getStudentNo());
+        data.put("name", student.getName());
+        data.put("gender", student.getGender());
+        data.put("collegeId", student.getCollegeId());
+        data.put("majorId", student.getMajorId());
+        data.put("avatarUrl", student.getAvatarUrl());
+        return data;
     }
 }

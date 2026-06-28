@@ -20,6 +20,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -94,12 +95,15 @@ class SecurityIntegrationTest {
                 .andExpect(jsonPath("$.accessToken").exists())
                 .andExpect(jsonPath("$.refreshToken").exists())
                 .andExpect(jsonPath("$.data.password").doesNotExist()) // 密码不应返回
+                .andExpect(jsonPath("$.data.refreshToken").doesNotExist())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
         // 保存Token用于后续测试
         Map<String, Object> result = objectMapper.readValue(response, Map.class);
+        assertEquals(Set.of("id", "studentNo", "name", "gender", "collegeId", "majorId", "avatarUrl"),
+                ((Map<?, ?>) result.get("data")).keySet());
         testAccessToken = (String) result.get("accessToken");
         testRefreshToken = (String) result.get("refreshToken");
         assertNotNull(testAccessToken);
@@ -172,14 +176,22 @@ class SecurityIntegrationTest {
         loginRequest.put("teacherNo", "T001");
         loginRequest.put("password", "123456");
 
-        mockMvc.perform(post("/api/teacher/login")
+        String response = mockMvc.perform(post("/api/teacher/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(loginRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.accessToken").exists())
                 .andExpect(jsonPath("$.refreshToken").exists())
-                .andExpect(jsonPath("$.data.password").doesNotExist());
+                .andExpect(jsonPath("$.data.password").doesNotExist())
+                .andExpect(jsonPath("$.data.refreshToken").doesNotExist())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Map<String, Object> result = objectMapper.readValue(response, Map.class);
+        assertEquals(Set.of("id", "teacherNo", "name", "title", "collegeId", "avatarUrl"),
+                ((Map<?, ?>) result.get("data")).keySet());
     }
 
     @Test
@@ -188,14 +200,22 @@ class SecurityIntegrationTest {
         loginRequest.put("username", "admin");
         loginRequest.put("password", "123456");
 
-        mockMvc.perform(post("/api/admin/login")
+        String response = mockMvc.perform(post("/api/admin/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(loginRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.accessToken").exists())
                 .andExpect(jsonPath("$.refreshToken").exists())
-                .andExpect(jsonPath("$.data.password").doesNotExist());
+                .andExpect(jsonPath("$.data.password").doesNotExist())
+                .andExpect(jsonPath("$.data.refreshToken").doesNotExist())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Map<String, Object> result = objectMapper.readValue(response, Map.class);
+        assertEquals(Set.of("id", "username", "avatarUrl"),
+                ((Map<?, ?>) result.get("data")).keySet());
     }
 
     // ========== HIGH-001: Token 轮转安全测试 ==========

@@ -6,15 +6,21 @@ import com.labcourse.repository.AttendanceRepository;
 import com.labcourse.repository.CourseRepository;
 import com.labcourse.repository.SelectionRepository;
 import com.labcourse.repository.StudentRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.util.AopTestUtils;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -36,6 +42,10 @@ import static org.junit.jupiter.api.Assertions.*;
 @SuppressWarnings("null")
 class StoredProcedureIntegrationTest {
 
+    private static final ZoneId TEST_ZONE = ZoneId.systemDefault();
+    private static final LocalDateTime CHECK_IN_TIME = LocalDateTime.of(2026, 6, 22, 7, 55);
+    private static final LocalDate CHECK_IN_DATE = CHECK_IN_TIME.toLocalDate();
+
     @Autowired
     private AttendanceService attendanceService;
 
@@ -54,15 +64,29 @@ class StoredProcedureIntegrationTest {
     @Autowired
     private StudentRepository studentRepository;
 
+    @AfterEach
+    void resetAttendanceClock() throws Exception {
+        setAttendanceClock(Clock.systemDefaultZone());
+    }
+
     /**
      * 将课程时间设置为今天，确保签到测试中课程时间匹配
      */
-    private void setCourseTimeForToday(Long courseId) {
+    private void setCourseTimeForDate(Long courseId, LocalDate date) {
         String[] dayNames = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
-        int d = LocalDate.now().getDayOfWeek().getValue();
+        int d = date.getDayOfWeek().getValue();
         Course course = courseRepository.findById(courseId).orElseThrow();
         course.setCourseTime(dayNames[d - 1] + " 1-2节");
         courseRepository.save(course);
+    }
+
+    private void useFixedCheckInClock() throws Exception {
+        setAttendanceClock(Clock.fixed(CHECK_IN_TIME.atZone(TEST_ZONE).toInstant(), TEST_ZONE));
+    }
+
+    private void setAttendanceClock(Clock clock) throws Exception {
+        Object target = AopTestUtils.getTargetObject(attendanceService);
+        ReflectionTestUtils.setField(target, "clock", clock);
     }
 
     // ================================================================
@@ -71,8 +95,9 @@ class StoredProcedureIntegrationTest {
 
     @Test
     @DisplayName("签到成功：学生签到后返回 success=true 且创建 attendance 记录")
-    void testCheckInSuccess() {
-        setCourseTimeForToday(9001L);
+    void testCheckInSuccess() throws Exception {
+        useFixedCheckInClock();
+        setCourseTimeForDate(9001L, CHECK_IN_DATE);
 
         Map<String, Object> result = attendanceService.checkIn(9001L, 9001L);
 
@@ -83,7 +108,7 @@ class StoredProcedureIntegrationTest {
 
         // 验证数据库中存在签到记录
         boolean exists = attendanceRepository.existsByStudentIdAndCourseIdAndAttendanceDate(
-                9001L, 9001L, LocalDate.now());
+                9001L, 9001L, CHECK_IN_DATE);
         assertTrue(exists, "数据库中应存在签到记录");
     }
 
@@ -93,8 +118,9 @@ class StoredProcedureIntegrationTest {
 
     @Test
     @DisplayName("重复签到：同一学生同一天对同一课程签到两次，第二次应返回失败")
-    void testCheckInDuplicate() {
-        setCourseTimeForToday(9001L);
+    void testCheckInDuplicate() throws Exception {
+        useFixedCheckInClock();
+        setCourseTimeForDate(9001L, CHECK_IN_DATE);
 
         // 第一次签到
         Map<String, Object> firstResult = attendanceService.checkIn(9001L, 9001L);
@@ -109,7 +135,7 @@ class StoredProcedureIntegrationTest {
         // 验证数据库中只有一条签到记录
         long count = attendanceRepository.findByStudentIdOrderByAttendanceDateDesc(9001L)
                 .stream()
-                .filter(a -> a.getCourseId().equals(9001L) && a.getAttendanceDate().equals(LocalDate.now()))
+                .filter(a -> a.getCourseId().equals(9001L) && a.getAttendanceDate().equals(CHECK_IN_DATE))
                 .count();
         assertEquals(1, count, "同一天同一课程应只有一条签到记录");
     }

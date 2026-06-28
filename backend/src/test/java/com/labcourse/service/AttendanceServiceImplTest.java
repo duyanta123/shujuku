@@ -10,6 +10,7 @@ import com.labcourse.repository.SelectionRepository;
 import com.labcourse.repository.StudentRepository;
 import com.labcourse.service.impl.AttendanceServiceImpl;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -21,8 +22,11 @@ import org.mockito.quality.Strictness;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.SqlParameter;
 import org.springframework.jdbc.core.simple.SimpleJdbcCall;
+import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.LocalDate;
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -51,6 +55,11 @@ class AttendanceServiceImplTest {
     @Mock
     private JdbcTemplate jdbcTemplate;
 
+    @BeforeEach
+    void setUpClock() {
+        useClockAt(LocalDateTime.of(2026, 6, 22, 7, 55));
+    }
+
     @Test
     @DisplayName("checkIn: course not found")
     void checkInCourseNotFound() {
@@ -72,10 +81,8 @@ class AttendanceServiceImplTest {
     @Test
     @DisplayName("checkIn: duplicate reject")
     void checkInDuplicate() {
-        int d = LocalDate.now().getDayOfWeek().getValue();
-        String[] dayNames = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
         Course c = course(10L, "Test", 1L);
-        c.setCourseTime(dayNames[d - 1] + " 1-2节");
+        c.setCourseTime("周一 1-2节");
         Student s = student(1L, "Zhang");
         when(courseRepository.findById(10L)).thenReturn(Optional.of(c));
         when(studentRepository.findById(1L)).thenReturn(Optional.of(s));
@@ -109,10 +116,8 @@ class AttendanceServiceImplTest {
     @Test
     @DisplayName("checkIn: success")
     void checkInSuccess() {
-        int d = LocalDate.now().getDayOfWeek().getValue();
-        String[] dayNames = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
         Course c = course(10L, "Test", 1L);
-        c.setCourseTime(dayNames[d - 1] + " 1-2节");
+        c.setCourseTime("周一 1-2节");
         Student s = student(1L, "Zhang");
         when(courseRepository.findById(10L)).thenReturn(Optional.of(c));
         when(studentRepository.findById(1L)).thenReturn(Optional.of(s));
@@ -134,12 +139,28 @@ class AttendanceServiceImplTest {
     }
 
     @Test
+    @DisplayName("checkIn: too early reject")
+    void checkInTooEarlyRejectsWithoutSaving() {
+        useClockAt(LocalDateTime.of(2026, 6, 22, 7, 0));
+        Course c = course(10L, "Test", 1L);
+        c.setCourseTime("周一 1-2节");
+        Student s = student(1L, "Zhang");
+        when(courseRepository.findById(10L)).thenReturn(Optional.of(c));
+        when(studentRepository.findById(1L)).thenReturn(Optional.of(s));
+
+        try (MockedConstruction<SimpleJdbcCall> mocked = mockConstruction(SimpleJdbcCall.class)) {
+            Map<String, Object> r = service.checkIn(1L, 10L);
+            assertFalse((Boolean) r.get("success"));
+            assertTrue(mocked.constructed().isEmpty());
+            verify(attendanceRepository, never()).saveAndFlush(any(Attendance.class));
+        }
+    }
+
+    @Test
     @DisplayName("checkIn: stored procedure ERROR status")
     void checkInProcError() {
-        int d = LocalDate.now().getDayOfWeek().getValue();
-        String[] dayNames = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
         Course c = course(10L, "Test", 1L);
-        c.setCourseTime(dayNames[d - 1] + " 1-2节");
+        c.setCourseTime("周一 1-2节");
         Student s = student(1L, "Zhang");
         when(courseRepository.findById(10L)).thenReturn(Optional.of(c));
         when(studentRepository.findById(1L)).thenReturn(Optional.of(s));
@@ -162,10 +183,8 @@ class AttendanceServiceImplTest {
     @Test
     @DisplayName("checkIn: unexpected stored procedure return value (null status)")
     void checkInUnexpectedNullStatus() {
-        int d = LocalDate.now().getDayOfWeek().getValue();
-        String[] dayNames = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
         Course c = course(10L, "Test", 1L);
-        c.setCourseTime(dayNames[d - 1] + " 1-2节");
+        c.setCourseTime("周一 1-2节");
         Student s = student(1L, "Zhang");
         when(courseRepository.findById(10L)).thenReturn(Optional.of(c));
         when(studentRepository.findById(1L)).thenReturn(Optional.of(s));
@@ -190,10 +209,8 @@ class AttendanceServiceImplTest {
     @Test
     @DisplayName("checkIn: unexpected stored procedure return value (UNKNOWN status)")
     void checkInUnexpectedUnknownStatus() {
-        int d = LocalDate.now().getDayOfWeek().getValue();
-        String[] dayNames = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
         Course c = course(10L, "Test", 1L);
-        c.setCourseTime(dayNames[d - 1] + " 1-2节");
+        c.setCourseTime("周一 1-2节");
         Student s = student(1L, "Zhang");
         when(courseRepository.findById(10L)).thenReturn(Optional.of(c));
         when(studentRepository.findById(1L)).thenReturn(Optional.of(s));
@@ -235,12 +252,11 @@ class AttendanceServiceImplTest {
     }
 
     @Test
-    @DisplayName("addAttendance: invalid status throws")
+    @DisplayName("addAttendance: invalid status returns false")
     void addAttendanceInvalid() {
-        when(attendanceRepository.findByStudentIdAndCourseIdAndAttendanceDate(eq(1L), eq(10L), any()))
-                .thenReturn(Optional.empty());
-        assertThrows(IllegalArgumentException.class, () ->
-                service.addAttendance(1L, 10L, "invalid"));
+        assertFalse(service.addAttendance(1L, 10L, "invalid"));
+        verify(attendanceRepository, never()).save(any(Attendance.class));
+        verify(attendanceRepository, never()).saveAndFlush(any(Attendance.class));
     }
 
     @Test
@@ -368,5 +384,11 @@ class AttendanceServiceImplTest {
         s.setStudentNo("S00" + id);
         s.setCollegeId(1L);
         return s;
+    }
+
+    private void useClockAt(LocalDateTime dateTime) {
+        ZoneId zone = ZoneId.systemDefault();
+        Clock fixedClock = Clock.fixed(dateTime.atZone(zone).toInstant(), zone);
+        ReflectionTestUtils.setField(service, "clock", fixedClock);
     }
 }

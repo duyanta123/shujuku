@@ -6,8 +6,11 @@ import com.labcourse.service.impl.ScoreServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -25,12 +28,15 @@ class ScoreServiceImplTest {
 
     private ScoreServiceImpl service;
     private ScoreRepository scoreRepository;
+    private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void setUp() {
         service = new ScoreServiceImpl();
         scoreRepository = mock(ScoreRepository.class);
+        jdbcTemplate = mock(JdbcTemplate.class);
         injectField(service, "scoreRepository", scoreRepository);
+        injectField(service, "jdbcTemplate", jdbcTemplate);
     }
 
     // ================================================================
@@ -172,6 +178,66 @@ class ScoreServiceImplTest {
 
         assertEquals(2, result.size());
         verify(scoreRepository).findAll();
+    }
+
+    // ================================================================
+    // getScoresByCourse — 新增方法（commit 4274e4f）
+    // ================================================================
+
+    @Test
+    @DisplayName("getScoresByCourse: 应返回学生成绩列表含学院和专业信息")
+    void getScoresByCourse_ShouldReturnStudentScores() {
+        Long courseId = 10L;
+        Map<String, Object> row1 = new java.util.HashMap<>();
+        row1.put("student_id", 1L);
+        row1.put("student_no", "S001");
+        row1.put("studentNo", "S001");
+        row1.put("name", "张三");
+        row1.put("gender", "男");
+        row1.put("major", "计算机科学");
+        row1.put("college", "信息学院");
+        row1.put("score", new BigDecimal("85.5"));
+        row1.put("course_id", courseId);
+        row1.put("courseId", courseId);
+
+        Map<String, Object> row2 = new java.util.HashMap<>();
+        row2.put("student_id", 2L);
+        row2.put("student_no", "S002");
+        row2.put("studentNo", "S002");
+        row2.put("name", "李四");
+        row2.put("gender", "女");
+        row2.put("major", "软件工程");
+        row2.put("college", "信息学院");
+        row2.put("score", null);
+        row2.put("course_id", courseId);
+        row2.put("courseId", courseId);
+
+        when(jdbcTemplate.queryForList(anyString(), eq(courseId)))
+                .thenReturn(List.of(row1, row2));
+
+        List<Map<String, Object>> result = service.getScoresByCourse(courseId);
+
+        assertNotNull(result);
+        assertEquals(2, result.size());
+        assertEquals("张三", result.get(0).get("name"));
+        assertEquals(new BigDecimal("85.5"), result.get(0).get("score"));
+        assertEquals("计算机科学", result.get(0).get("major"));
+        assertEquals("信息学院", result.get(0).get("college"));
+        assertNull(result.get(1).get("score"), "未录入成绩的学生 score 应为 null");
+        verify(jdbcTemplate).queryForList(anyString(), eq(courseId));
+    }
+
+    @Test
+    @DisplayName("getScoresByCourse: 无选课学生时应返回空列表")
+    void getScoresByCourse_NoStudents_ShouldReturnEmpty() {
+        Long courseId = 999L;
+        when(jdbcTemplate.queryForList(anyString(), eq(courseId)))
+                .thenReturn(List.of());
+
+        List<Map<String, Object>> result = service.getScoresByCourse(courseId);
+
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
     }
 
     // ===== 工具方法 =====

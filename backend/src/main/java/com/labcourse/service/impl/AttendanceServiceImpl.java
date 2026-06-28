@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import java.sql.Timestamp;
 import java.sql.Types;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -36,6 +37,8 @@ import java.util.stream.Collectors;
 public class AttendanceServiceImpl implements AttendanceService {
 
     private static final Logger log = LoggerFactory.getLogger(AttendanceServiceImpl.class);
+
+    private Clock clock = Clock.systemDefaultZone();
 
     @Autowired
     private AttendanceRepository attendanceRepository;
@@ -85,16 +88,25 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     public boolean addAttendance(Long studentId, Long courseId, String status) {
-        LocalDate today = LocalDate.now();
+        AttendanceStatus attendanceStatus;
+        try {
+            attendanceStatus = AttendanceStatus.valueOf(status);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            log.warn("[addAttendance] invalid attendance status | studentId={}, courseId={}, status={}",
+                    studentId, courseId, status);
+            return false;
+        }
+
+        LocalDate today = LocalDate.now(clock);
         Attendance existing = attendanceRepository.findByStudentIdAndCourseIdAndAttendanceDate(studentId, courseId, today).orElse(null);
         if (existing != null) {
-            existing.setAttendanceStatus(AttendanceStatus.valueOf(status));
+            existing.setAttendanceStatus(attendanceStatus);
             attendanceRepository.save(existing);
         } else {
             Attendance newAttendance = new Attendance();
             newAttendance.setStudentId(studentId);
             newAttendance.setCourseId(courseId);
-            newAttendance.setAttendanceStatus(AttendanceStatus.valueOf(status));
+            newAttendance.setAttendanceStatus(attendanceStatus);
             newAttendance.setAttendanceDate(today);
             attendanceRepository.save(newAttendance);
         }
@@ -129,11 +141,11 @@ public class AttendanceServiceImpl implements AttendanceService {
     public Map<String, Object> checkIn(Long studentId, Long courseId) {
         long threadId = Thread.currentThread().getId();
         log.info("[checkIn] 线程-{} | 开始签到 | studentId={}, courseId={}, time={}",
-                threadId, studentId, courseId, LocalDateTime.now());
+                threadId, studentId, courseId, LocalDateTime.now(clock));
 
         Map<String, Object> result = new HashMap<>();
-        LocalDate today = LocalDate.now();
-        LocalDateTime now = LocalDateTime.now();
+        LocalDate today = LocalDate.now(clock);
+        LocalDateTime now = LocalDateTime.now(clock);
 
         // 1. 获取课程信息
         Course course = courseRepository.findById(courseId).orElse(null);
@@ -215,7 +227,13 @@ public class AttendanceServiceImpl implements AttendanceService {
 
         AttendanceStatus status;
         String statusReason;
-        if (minutesBeforeStart >= 0 && minutesBeforeStart <= 10) {
+        if (minutesBeforeStart > 10) {
+            log.info("[checkIn] 线程-{} | 分支-签到过早 | studentId={}, courseId={}, minutesBeforeStart={}",
+                    threadId, studentId, courseId, minutesBeforeStart);
+            result.put("success", false);
+            result.put("message", "签到时间过早，请在课前10分钟内签到");
+            return result;
+        } else if (minutesBeforeStart >= 0 && minutesBeforeStart <= 10) {
             status = AttendanceStatus.出勤;
             statusReason = "课前" + minutesBeforeStart + "分钟签到";
             log.info("[checkIn] 线程-{} | 分支-出勤(课前) | studentId={}, courseId={}, minutesBeforeStart={}",
@@ -458,7 +476,7 @@ public class AttendanceServiceImpl implements AttendanceService {
         if (currentStatus == AttendanceStatus.缺勤 && AttendanceStatus.请假.name().equals(newStatus)) {
             attendance.setAttendanceStatus(AttendanceStatus.请假);
             attendance.setModifiedBy(teacherId);
-            attendance.setModifyTime(LocalDateTime.now());
+            attendance.setModifyTime(LocalDateTime.now(clock));
             attendance.setModifyReason(reason);
             attendanceRepository.save(attendance);
 
@@ -485,7 +503,7 @@ public class AttendanceServiceImpl implements AttendanceService {
     public Map<String, Object> batchCreateAbsent(Long courseId, LocalDate date) {
         Map<String, Object> result = new HashMap<>();
         if (date == null) {
-            date = LocalDate.now();
+            date = LocalDate.now(clock);
         }
         if (!courseRepository.existsById(courseId)) {
             result.put("success", false);
@@ -568,7 +586,7 @@ public class AttendanceServiceImpl implements AttendanceService {
     @Override
     public Map<String, Object> getServerTime() {
         Map<String, Object> result = new HashMap<>();
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
         result.put("timestamp", now.toString());
         result.put("date", now.toLocalDate().toString());
         result.put("time", now.toLocalTime().toString());

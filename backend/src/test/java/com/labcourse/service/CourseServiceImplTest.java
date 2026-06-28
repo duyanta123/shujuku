@@ -2,16 +2,19 @@ package com.labcourse.service;
 
 import com.labcourse.entity.College;
 import com.labcourse.entity.Course;
+import com.labcourse.entity.Lab;
 import com.labcourse.entity.Teacher;
 import com.labcourse.exception.BusinessException;
 import com.labcourse.repository.CollegeRepository;
 import com.labcourse.repository.CourseRepository;
+import com.labcourse.repository.LabRepository;
 import com.labcourse.repository.SelectionRepository;
 import com.labcourse.repository.TeacherRepository;
 import com.labcourse.service.impl.CourseServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
@@ -38,6 +41,7 @@ class CourseServiceImplTest {
     private SelectionRepository selectionRepository;
     private TeacherRepository teacherRepository;
     private CollegeRepository collegeRepository;
+    private LabRepository labRepository;
     private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
@@ -47,12 +51,14 @@ class CourseServiceImplTest {
         selectionRepository = mock(SelectionRepository.class);
         teacherRepository = mock(TeacherRepository.class);
         collegeRepository = mock(CollegeRepository.class);
+        labRepository = mock(LabRepository.class);
         jdbcTemplate = mock(JdbcTemplate.class);
 
         injectField(service, "courseRepository", courseRepository);
         injectField(service, "selectionRepository", selectionRepository);
         injectField(service, "teacherRepository", teacherRepository);
         injectField(service, "collegeRepository", collegeRepository);
+        injectField(service, "labRepository", labRepository);
         injectField(service, "jdbcTemplate", jdbcTemplate);
     }
 
@@ -522,6 +528,315 @@ class CourseServiceImplTest {
         verify(courseRepository).save(existing);
     }
 
+    // ================================================================
+    // validateCourseType — 新增校验（commit 4274e4f）
+    // ================================================================
+
+    @Test
+    @DisplayName("save: courseType 为 null 应抛出 INVALID_COURSE_TYPE")
+    void save_CourseTypeNull_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(30);
+        course.setCourseType(null);
+        validCourseRelations(course);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.save(course));
+        assertEquals("INVALID_COURSE_TYPE", ex.getCode());
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
+        verify(courseRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("save: courseType 为无效值应抛出 INVALID_COURSE_TYPE")
+    void save_CourseTypeInvalid_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(30);
+        course.setCourseType("INVALID");
+        validCourseRelations(course);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.save(course));
+        assertEquals("INVALID_COURSE_TYPE", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("save: courseType=REQUIRED 应通过校验")
+    void save_CourseTypeRequired_ShouldSucceed() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(30);
+        course.setCourseType("REQUIRED");
+        validCourseRelations(course);
+
+        boolean result = service.save(course);
+        assertTrue(result);
+        verify(courseRepository).save(course);
+    }
+
+    @Test
+    @DisplayName("save: courseType=ELECTIVE 应通过校验")
+    void save_CourseTypeElective_ShouldSucceed() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(30);
+        course.setCourseType("ELECTIVE");
+        validCourseRelations(course);
+
+        boolean result = service.save(course);
+        assertTrue(result);
+        verify(courseRepository).save(course);
+    }
+
+    // ================================================================
+    // validateCourseRelations — 新增跨实体关联校验（commit 4274e4f）
+    // ================================================================
+
+    @Test
+    @DisplayName("save: teacherId 为 null 应抛出 TEACHER_NOT_FOUND")
+    void save_TeacherIdNull_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(30);
+        course.setCourseType("ELECTIVE");
+        course.setTeacherId(null);
+        course.setCollegeId(1L);
+
+        when(collegeRepository.findById(1L)).thenReturn(Optional.of(activeCollege(1L)));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.save(course));
+        assertEquals("TEACHER_NOT_FOUND", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("save: collegeId 为 null 应抛出 COLLEGE_NOT_FOUND")
+    void save_CollegeIdNull_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(30);
+        course.setCourseType("ELECTIVE");
+        course.setTeacherId(10L);
+        course.setCollegeId(null);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.save(course));
+        assertEquals("COLLEGE_NOT_FOUND", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("save: 教师不存在应抛出 TEACHER_NOT_FOUND")
+    void save_TeacherNotExists_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(30);
+        course.setCourseType("ELECTIVE");
+        course.setTeacherId(10L);
+        course.setCollegeId(1L);
+
+        when(teacherRepository.findById(10L)).thenReturn(Optional.empty());
+        when(collegeRepository.findById(1L)).thenReturn(Optional.of(activeCollege(1L)));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.save(course));
+        assertEquals("TEACHER_NOT_FOUND", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("save: 学院不存在应抛出 COLLEGE_NOT_FOUND")
+    void save_CollegeNotExists_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(30);
+        course.setCourseType("ELECTIVE");
+        course.setTeacherId(10L);
+        course.setCollegeId(1L);
+
+        Teacher teacher = new Teacher();
+        teacher.setId(10L);
+        when(teacherRepository.findById(10L)).thenReturn(Optional.of(teacher));
+        when(collegeRepository.findById(1L)).thenReturn(Optional.empty());
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.save(course));
+        assertEquals("COLLEGE_NOT_FOUND", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("save: 学院已停用应抛出 INVALID_RELATION")
+    void save_CollegeInactive_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(30);
+        course.setCourseType("ELECTIVE");
+        course.setTeacherId(10L);
+        course.setCollegeId(1L);
+
+        Teacher teacher = new Teacher();
+        teacher.setId(10L);
+        College college = new College();
+        college.setId(1L);
+        college.setStatus("INACTIVE");
+
+        when(teacherRepository.findById(10L)).thenReturn(Optional.of(teacher));
+        when(collegeRepository.findById(1L)).thenReturn(Optional.of(college));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.save(course));
+        assertEquals("INVALID_RELATION", ex.getCode());
+        assertEquals("学院已停用", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("save: 教师与课程不属于同一学院应抛出 INVALID_RELATION")
+    void save_TeacherCollegeMismatch_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(30);
+        course.setCourseType("ELECTIVE");
+        course.setTeacherId(10L);
+        course.setCollegeId(1L);
+
+        Teacher teacher = new Teacher();
+        teacher.setId(10L);
+        teacher.setCollegeId(2L);  // 教师属于学院2
+
+        when(teacherRepository.findById(10L)).thenReturn(Optional.of(teacher));
+        when(collegeRepository.findById(1L)).thenReturn(Optional.of(activeCollege(1L)));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.save(course));
+        assertEquals("INVALID_RELATION", ex.getCode());
+        assertEquals("教师与课程必须属于同一学院", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("save: 实验室与课程不属于同一学院应抛出 INVALID_RELATION")
+    void save_LabCollegeMismatch_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(30);
+        course.setCourseType("ELECTIVE");
+        course.setTeacherId(10L);
+        course.setCollegeId(1L);
+        course.setLabId(20L);
+
+        Teacher teacher = new Teacher();
+        teacher.setId(10L);
+        teacher.setCollegeId(1L);
+
+        Lab lab = new Lab();
+        lab.setId(20L);
+        lab.setCollegeId(2L);  // 实验室属于学院2
+
+        when(teacherRepository.findById(10L)).thenReturn(Optional.of(teacher));
+        when(collegeRepository.findById(1L)).thenReturn(Optional.of(activeCollege(1L)));
+        when(labRepository.findById(20L)).thenReturn(Optional.of(lab));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.save(course));
+        assertEquals("INVALID_RELATION", ex.getCode());
+        assertEquals("实验室与课程必须属于同一学院", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("save: 实验室不存在应抛出 LAB_NOT_FOUND")
+    void save_LabNotExists_ShouldThrow() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(30);
+        course.setCourseType("ELECTIVE");
+        course.setTeacherId(10L);
+        course.setCollegeId(1L);
+        course.setLabId(999L);
+
+        Teacher teacher = new Teacher();
+        teacher.setId(10L);
+        teacher.setCollegeId(1L);
+
+        when(teacherRepository.findById(10L)).thenReturn(Optional.of(teacher));
+        when(collegeRepository.findById(1L)).thenReturn(Optional.of(activeCollege(1L)));
+        when(labRepository.findById(999L)).thenReturn(Optional.empty());
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.save(course));
+        assertEquals("LAB_NOT_FOUND", ex.getCode());
+    }
+
+    @Test
+    @DisplayName("save: 教师 collegeId 为 null 时不应触发跨学院校验")
+    void save_TeacherCollegeIdNull_ShouldSkipMismatchCheck() {
+        Course course = new Course();
+        course.setCourseName("新课程");
+        course.setCourseTime("周一 1-2节");
+        course.setMaxCount(30);
+        course.setCourseType("ELECTIVE");
+        course.setTeacherId(10L);
+        course.setCollegeId(1L);
+
+        Teacher teacher = new Teacher();
+        teacher.setId(10L);
+        teacher.setCollegeId(null);  // 教师未设置学院
+
+        when(teacherRepository.findById(10L)).thenReturn(Optional.of(teacher));
+        when(collegeRepository.findById(1L)).thenReturn(Optional.of(activeCollege(1L)));
+
+        boolean result = service.save(course);
+        assertTrue(result);
+        verify(courseRepository).save(course);
+    }
+
+    // ================================================================
+    // updateById — 关联变更时的跨实体校验（commit 4274e4f）
+    // ================================================================
+
+    @Test
+    @DisplayName("updateById: 变更 teacherId 为跨学院教师应抛出 INVALID_RELATION")
+    void updateById_ChangeTeacherIdToCrossCollege_ShouldThrow() {
+        Course existing = new Course();
+        existing.setId(1L);
+        existing.setCourseName("Python编程");
+        existing.setCourseType("ELECTIVE");
+        existing.setTeacherId(10L);
+        existing.setCollegeId(1L);
+
+        Course update = new Course();
+        update.setId(1L);
+        update.setTeacherId(20L);  // 更换教师
+
+        Teacher newTeacher = new Teacher();
+        newTeacher.setId(20L);
+        newTeacher.setCollegeId(2L);  // 跨学院教师
+
+        when(courseRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(teacherRepository.findById(20L)).thenReturn(Optional.of(newTeacher));
+        when(collegeRepository.findById(1L)).thenReturn(Optional.of(activeCollege(1L)));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.updateById(update));
+        assertEquals("INVALID_RELATION", ex.getCode());
+        verify(courseRepository, never()).save(any());
+    }
+
+    // ================================================================
+    // removeById — 有选课记录时拒绝删除（commit 4274e4f）
+    // ================================================================
+
+    @Test
+    @DisplayName("removeById: 课程有选课记录时应抛出 COURSE_HAS_SELECTIONS")
+    void removeById_HasSelections_ShouldThrow() {
+        when(courseRepository.existsById(1L)).thenReturn(true);
+        when(selectionRepository.existsByCourseId(1L)).thenReturn(true);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.removeById(1L));
+        assertEquals("COURSE_HAS_SELECTIONS", ex.getCode());
+        assertEquals(HttpStatus.CONFLICT, ex.getStatus());
+        verify(courseRepository, never()).deleteById(any());
+    }
+
     // ===== 工具方法 =====
 
     private static void injectField(Object target, String fieldName, Object value) {
@@ -548,5 +863,12 @@ class CourseServiceImplTest {
 
         when(teacherRepository.findById(10L)).thenReturn(Optional.of(teacher));
         when(collegeRepository.findById(1L)).thenReturn(Optional.of(college));
+    }
+
+    private static College activeCollege(Long id) {
+        College college = new College();
+        college.setId(id);
+        college.setStatus("ACTIVE");
+        return college;
     }
 }

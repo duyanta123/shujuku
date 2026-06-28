@@ -42,7 +42,7 @@ public class TeacherController {
             teacherRepository.save(teacher);
             result.put("success", true);
             result.put("message", "登录成功");
-            result.put("data", teacher);
+            result.put("data", loginData(teacher));
             result.put("accessToken", accessToken);
             result.put("refreshToken", refreshToken);
             return ResponseEntity.ok(result);
@@ -133,5 +133,16 @@ public class TeacherController {
             result.put("message", "旧密码错误");
         }
         return ResponseEntity.ok(result);
+    }
+
+    private Map<String, Object> loginData(Teacher teacher) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("id", teacher.getId());
+        data.put("teacherNo", teacher.getTeacherNo());
+        data.put("name", teacher.getName());
+        data.put("title", teacher.getTitle());
+        data.put("collegeId", teacher.getCollegeId());
+        data.put("avatarUrl", teacher.getAvatarUrl());
+        return data;
     }
 }

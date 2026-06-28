@@ -40,7 +40,7 @@ public class AdminController {
             adminRepository.save(admin);
             result.put("success", true);
             result.put("message", "登录成功");
-            result.put("data", admin);
+            result.put("data", loginData(admin));
             result.put("accessToken", accessToken);
             result.put("refreshToken", refreshToken);
             return ResponseEntity.ok(result);
@@ -49,5 +49,13 @@ public class AdminController {
             result.put("message", "用户名或密码错误");
             return ResponseEntity.status(401).body(result);
         }
+    }
+
+    private Map<String, Object> loginData(Admin admin) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("id", admin.getId());
+        data.put("username", admin.getUsername());
+        data.put("avatarUrl", admin.getAvatarUrl());
+        return data;
     }
 }

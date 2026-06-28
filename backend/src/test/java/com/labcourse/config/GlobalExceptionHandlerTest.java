@@ -1,6 +1,7 @@
 package com.labcourse.config;
 
 import com.labcourse.exception.AccountLockedException;
+import com.labcourse.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -171,6 +172,50 @@ class GlobalExceptionHandlerTest {
         assertNotNull(body);
         assertEquals(5L, body.get("remainingMinutes"));
         assertEquals(true, body.get("locked"));
+    }
+
+    // ================================================================
+    // BusinessException — 新增异常类型（commit 4274e4f）
+    // ================================================================
+
+    @Test
+    @DisplayName("BusinessException: 应返回异常中携带的 HTTP 状态码、code 和 message")
+    void handleBusinessException_ShouldReturnHttpStatusAndCode() {
+        BusinessException ex = new BusinessException("COURSE_HAS_SELECTIONS",
+                "课程已有选课记录，无法删除", HttpStatus.CONFLICT);
+
+        ResponseEntity<Map<String, Object>> response = handler.handleBusinessException(ex);
+
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        Map<String, Object> body = response.getBody();
+        assertNotNull(body);
+        assertEquals(false, body.get("success"));
+        assertEquals("COURSE_HAS_SELECTIONS", body.get("code"));
+        assertEquals("课程已有选课记录，无法删除", body.get("message"));
+    }
+
+    @Test
+    @DisplayName("BusinessException: BAD_REQUEST 状态码应正确传递")
+    void handleBusinessException_BadRequest_ShouldReturn400() {
+        BusinessException ex = new BusinessException("INVALID_COURSE_TYPE",
+                "courseType must be REQUIRED or ELECTIVE", HttpStatus.BAD_REQUEST);
+
+        ResponseEntity<Map<String, Object>> response = handler.handleBusinessException(ex);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals("INVALID_COURSE_TYPE", response.getBody().get("code"));
+    }
+
+    @Test
+    @DisplayName("BusinessException: FORBIDDEN 状态码应正确传递")
+    void handleBusinessException_Forbidden_ShouldReturn403() {
+        BusinessException ex = new BusinessException("FORBIDDEN",
+                "无权查看此课程的成绩", HttpStatus.FORBIDDEN);
+
+        ResponseEntity<Map<String, Object>> response = handler.handleBusinessException(ex);
+
+        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+        assertEquals("FORBIDDEN", response.getBody().get("code"));
     }
 
     // ================================================================

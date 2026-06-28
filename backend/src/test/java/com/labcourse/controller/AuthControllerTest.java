@@ -23,6 +23,8 @@ import static org.mockito.Mockito.*;
  * AuthController 单元测试 — 覆盖 Token 轮转与登出的安全关键路径
  *
  * 风险行为覆盖：
+ * - validateToken: 有效 Token、过期/无效 Token、缺少 Authorization 头、
+ *              用户不存在（student/teacher/admin 三种角色验证）
  * - refreshToken: Token 轮转（旧 Refresh Token 失效 + 新 pair 生成）、
  *              Refresh Token 已使用（重放攻击）、无效 Refresh Token、
  *              缺少参数、三种角色（student/teacher/admin）
@@ -110,6 +112,158 @@ class AuthControllerTest {
             builder.add("role", role[0]);
         }
         return builder.build();
+    }
+
+    /**
+     * 创建一个带 username 的 Claims 对象用于测试。
+     */
+    private static Claims createClaimsStub(String subject, String role, String username) {
+        var builder = io.jsonwebtoken.Jwts.claims().subject(subject);
+        if (role != null) {
+            builder.add("role", role);
+        }
+        if (username != null) {
+            builder.add("username", username);
+        }
+        return builder.build();
+    }
+
+    // ================================================================
+    // validateToken — 新增端点（commit 4274e4f）
+    // ================================================================
+
+    @Test
+    @DisplayName("validateToken: 有效 Student Token 应返回用户信息")
+    void validateToken_ValidStudent_ShouldReturnUserInfo() {
+        Claims claims = createClaimsStub("1", "student", "test_student");
+        jwtUtil.setValidateAccessTokenResult(claims);
+
+        Student student = new Student();
+        student.setId(1L);
+        when(studentRepository.existsById(1L)).thenReturn(true);
+
+        ResponseEntity<Map<String, Object>> response = controller.validateToken("Bearer valid_token");
+
+        assertEquals(200, response.getStatusCode().value());
+        Map<String, Object> body = response.getBody();
+        assertNotNull(body);
+        assertTrue((Boolean) body.get("success"));
+        assertEquals("Token有效", body.get("message"));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) body.get("data");
+        assertEquals(1L, data.get("userId"));
+        assertEquals("test_student", data.get("username"));
+        assertEquals("student", data.get("role"));
+    }
+
+    @Test
+    @DisplayName("validateToken: 有效 Teacher Token 应返回用户信息")
+    void validateToken_ValidTeacher_ShouldReturnUserInfo() {
+        Claims claims = createClaimsStub("2", "teacher", "test_teacher");
+        jwtUtil.setValidateAccessTokenResult(claims);
+
+        when(teacherRepository.existsById(2L)).thenReturn(true);
+
+        ResponseEntity<Map<String, Object>> response = controller.validateToken("Bearer valid_token");
+
+        assertEquals(200, response.getStatusCode().value());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+        assertEquals("teacher", data.get("role"));
+    }
+
+    @Test
+    @DisplayName("validateToken: 有效 Admin Token 应返回用户信息")
+    void validateToken_ValidAdmin_ShouldReturnUserInfo() {
+        Claims claims = createClaimsStub("3", "admin", "test_admin");
+        jwtUtil.setValidateAccessTokenResult(claims);
+
+        when(adminRepository.existsById(3L)).thenReturn(true);
+
+        ResponseEntity<Map<String, Object>> response = controller.validateToken("Bearer valid_token");
+
+        assertEquals(200, response.getStatusCode().value());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+        assertEquals("admin", data.get("role"));
+    }
+
+    @Test
+    @DisplayName("validateToken: 缺少 Authorization 头应返回 401")
+    void validateToken_MissingAuthHeader_ShouldReturn401() {
+        ResponseEntity<Map<String, Object>> response = controller.validateToken(null);
+
+        assertEquals(401, response.getStatusCode().value());
+        Map<String, Object> body = response.getBody();
+        assertNotNull(body);
+        assertFalse((Boolean) body.get("success"));
+        assertTrue(((String) body.get("message")).contains("缺少"));
+    }
+
+    @Test
+    @DisplayName("validateToken: Authorization 头不以 Bearer 开头应返回 401")
+    void validateToken_InvalidAuthHeaderFormat_ShouldReturn401() {
+        ResponseEntity<Map<String, Object>> response = controller.validateToken("Basic abc123");
+
+        assertEquals(401, response.getStatusCode().value());
+        assertFalse((Boolean) response.getBody().get("success"));
+    }
+
+    @Test
+    @DisplayName("validateToken: 过期或无效 Token 应返回 401")
+    void validateToken_ExpiredToken_ShouldReturn401() {
+        jwtUtil.setValidateAccessTokenResult(null);
+
+        ResponseEntity<Map<String, Object>> response = controller.validateToken("Bearer expired_token");
+
+        assertEquals(401, response.getStatusCode().value());
+        Map<String, Object> body = response.getBody();
+        assertNotNull(body);
+        assertFalse((Boolean) body.get("success"));
+        assertTrue(((String) body.get("message")).contains("过期"));
+    }
+
+    @Test
+    @DisplayName("validateToken: Token 有效但用户不存在应返回 401")
+    void validateToken_UserNotExists_ShouldReturn401() {
+        Claims claims = createClaimsStub("999", "student", "ghost_user");
+        jwtUtil.setValidateAccessTokenResult(claims);
+
+        when(studentRepository.existsById(999L)).thenReturn(false);
+
+        ResponseEntity<Map<String, Object>> response = controller.validateToken("Bearer valid_token");
+
+        assertEquals(401, response.getStatusCode().value());
+        Map<String, Object> body = response.getBody();
+        assertNotNull(body);
+        assertFalse((Boolean) body.get("success"));
+        assertEquals("用户不存在", body.get("message"));
+    }
+
+    @Test
+    @DisplayName("validateToken: Token 中 role 为 null 时 userExists 应返回 false")
+    void validateToken_NullRole_ShouldReturn401() {
+        Claims claims = createClaimsStub("1");
+        // role 未设置，应为 null
+        jwtUtil.setValidateAccessTokenResult(claims);
+
+        ResponseEntity<Map<String, Object>> response = controller.validateToken("Bearer valid_token");
+
+        assertEquals(401, response.getStatusCode().value());
+        assertEquals("用户不存在", response.getBody().get("message"));
+    }
+
+    @Test
+    @DisplayName("validateToken: 未知 role 的 userExists 应返回 false")
+    void validateToken_UnknownRole_ShouldReturn401() {
+        Claims claims = createClaimsStub("1", "superadmin", "unknown");
+        jwtUtil.setValidateAccessTokenResult(claims);
+
+        ResponseEntity<Map<String, Object>> response = controller.validateToken("Bearer valid_token");
+
+        assertEquals(401, response.getStatusCode().value());
+        assertEquals("用户不存在", response.getBody().get("message"));
     }
 
     // ================================================================
