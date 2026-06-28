@@ -47,15 +47,18 @@ public class JwtFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         try {
             String token = extractToken(request);
-            if (StringUtils.hasText(token) && jwtUtil.validateToken(token)) {
-                Long userId = jwtUtil.extractUserId(token);
-                String role = jwtUtil.extractRole(token);
-                if (userId != null && isExistingUser(userId, role)) {
-                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                            userId, null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role))
-                    );
-                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
+            if (StringUtils.hasText(token)) {
+                io.jsonwebtoken.Claims claims = jwtUtil.validateAccessToken(token);
+                if (claims != null) {
+                    Long userId = jwtUtil.extractUserId(token);
+                    String role = jwtUtil.extractRole(token);
+                    if (userId != null && role != null && isExistingUser(userId, role)) {
+                        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                                userId, null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role))
+                        );
+                        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        SecurityContextHolder.getContext().setAuthentication(authentication);
+                    }
                 }
             }
         } catch (Exception e) {

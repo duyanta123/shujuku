@@ -113,8 +113,13 @@ public class TeacherController {
     @PutMapping("/change-password")
     public ResponseEntity<Map<String, Object>> changePassword(@RequestBody Map<String, String> data) {
         Map<String, Object> result = new HashMap<>();
-        // 从SecurityContext获取当前登录用户ID
-        Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        org.springframework.security.core.Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            result.put("success", false);
+            result.put("message", "未登录");
+            return ResponseEntity.status(401).body(result);
+        }
+        Long userId = (Long) auth.getPrincipal();
         String oldPassword = data.get("oldPassword");
         String newPassword = data.get("newPassword");
 

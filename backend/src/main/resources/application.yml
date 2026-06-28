@@ -26,7 +26,7 @@ server:
   port: ${SERVER_PORT:8080}
 
 jwt:
-  secret: ${JWT_SECRET}
+  secret: ${JWT_SECRET:dev-secret-key-change-in-production-this-is-unsafe}
   expiration: ${JWT_EXPIRATION:86400000}
 
 logging:

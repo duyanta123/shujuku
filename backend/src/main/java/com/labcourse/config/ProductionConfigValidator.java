@@ -32,6 +32,17 @@ public class ProductionConfigValidator implements ApplicationRunner {
         if ("123456".equals(password) || "demo".equalsIgnoreCase(password)) {
             throw new IllegalStateException("Production database password must not use demo credentials.");
         }
+
+        String jwtSecret = environment.getProperty("jwt.secret");
+        if (isBlank(jwtSecret)) {
+            throw new IllegalStateException("Production JWT secret must be configured explicitly.");
+        }
+        if (jwtSecret.length() < 32) {
+            throw new IllegalStateException("Production JWT secret must be at least 32 characters long for security.");
+        }
+        if (jwtSecret.contains("dev") || jwtSecret.contains("change-in-production") || jwtSecret.contains("unsafe")) {
+            throw new IllegalStateException("Production JWT secret must not use default/dev value.");
+        }
     }
 
     private boolean isBlank(String value) {

@@ -77,8 +77,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/major-required-course/**").hasRole("admin")
                         // 用户接口：任何认证用户均可访问
                         .requestMatchers("/api/user/**").authenticated()
-                        .requestMatchers("/api/student/change-password").authenticated()
-                        .requestMatchers("/api/teacher/change-password").authenticated()
+                        .requestMatchers("/api/student/change-password").hasRole("student")
+                        .requestMatchers("/api/teacher/change-password").hasRole("teacher")
                         // 静态文件：无需认证
                         .requestMatchers("/api/static/**").permitAll()
                         // 其他需要认证

@@ -57,7 +57,7 @@ public class UserServiceImpl implements UserService {
     private static final String AVATAR_URL_PREFIX = "/api/static/avatars/";
     private static final int AVATAR_SIZE = 200;
 
-    @Value("${app.upload.avatar-dir:d:/789/backend/uploads/avatars/}")
+    @Value("${app.upload.avatar-dir:${user.dir}/uploads/avatars}")
     private String avatarDir;
 
     @Override
